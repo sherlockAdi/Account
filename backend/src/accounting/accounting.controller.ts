@@ -1,0 +1,101 @@
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { AccountingService } from './accounting.service';
+import { AccountingQueryDto } from './dto/accounting-query.dto';
+import { CreateAccountGroupDto } from './dto/create-account-group.dto';
+import { CreateLedgerDto } from './dto/create-ledger.dto';
+import { CreateVoucherDto } from './dto/create-voucher.dto';
+import { CreateVoucherTypeDto } from './dto/create-voucher-type.dto';
+import { UpdateAccountGroupDto } from './dto/update-account-group.dto';
+import { UpdateLedgerDto } from './dto/update-ledger.dto';
+import { UpdateVoucherTypeDto } from './dto/update-voucher-type.dto';
+
+@ApiTags('Accounting')
+@Controller('accounting')
+export class AccountingController {
+  constructor(private readonly accountingService: AccountingService) {}
+
+  @Get('groups')
+  @ApiOkResponse({ description: 'List account groups.' })
+  listGroups(@Query('companyId') companyId?: string) {
+    return this.accountingService.listGroups(companyId);
+  }
+
+  @Post('groups')
+  @ApiCreatedResponse({ description: 'Create account group.' })
+  createGroup(@Query('companyId') companyId: string | undefined, @Body() dto: CreateAccountGroupDto) {
+    return this.accountingService.createGroup(companyId, dto);
+  }
+
+  @Patch('groups/:id')
+  @ApiOkResponse({ description: 'Update account group.' })
+  updateGroup(@Param('id') id: string, @Body() dto: UpdateAccountGroupDto) {
+    return this.accountingService.updateGroup(id, dto);
+  }
+
+  @Get('ledgers')
+  @ApiOkResponse({ description: 'List ledgers.' })
+  listLedgers(@Query('companyId') companyId?: string) {
+    return this.accountingService.listLedgers(companyId);
+  }
+
+  @Post('ledgers')
+  @ApiCreatedResponse({ description: 'Create ledger.' })
+  createLedger(@Query('companyId') companyId: string | undefined, @Body() dto: CreateLedgerDto) {
+    return this.accountingService.createLedger(companyId, dto);
+  }
+
+  @Patch('ledgers/:id')
+  @ApiOkResponse({ description: 'Update ledger.' })
+  updateLedger(@Param('id') id: string, @Body() dto: UpdateLedgerDto) {
+    return this.accountingService.updateLedger(id, dto);
+  }
+
+  @Get('voucher-types')
+  @ApiOkResponse({ description: 'List voucher type masters with numbering pattern.' })
+  listVoucherTypes(@Query('companyId') companyId?: string) {
+    return this.accountingService.listVoucherTypes(companyId);
+  }
+
+  @Post('voucher-types')
+  @ApiCreatedResponse({ description: 'Create voucher type master.' })
+  createVoucherType(@Query('companyId') companyId: string | undefined, @Body() dto: CreateVoucherTypeDto) {
+    return this.accountingService.createVoucherType(companyId, dto);
+  }
+
+  @Patch('voucher-types/:id')
+  @ApiOkResponse({ description: 'Update voucher type master.' })
+  updateVoucherType(@Param('id') id: string, @Body() dto: UpdateVoucherTypeDto) {
+    return this.accountingService.updateVoucherType(id, dto);
+  }
+
+  @Get('vouchers')
+  @ApiOkResponse({ description: 'List vouchers/day book.' })
+  listVouchers(@Query() query: AccountingQueryDto) {
+    return this.accountingService.listVouchers(query);
+  }
+
+  @Post('vouchers')
+  @ApiCreatedResponse({ description: 'Create balanced voucher.' })
+  createVoucher(@Query('companyId') companyId: string | undefined, @Body() dto: CreateVoucherDto) {
+    return this.accountingService.createVoucher(companyId, dto);
+  }
+
+  @Get('reports/trial-balance')
+  @ApiOkResponse({ description: 'Trial balance.' })
+  trialBalance(@Query() query: AccountingQueryDto) {
+    return this.accountingService.trialBalance(query);
+  }
+
+  @Get('reports/day-book')
+  @ApiOkResponse({ description: 'Day book.' })
+  dayBook(@Query() query: AccountingQueryDto) {
+    return this.accountingService.dayBook(query);
+  }
+
+  @Get('reports/ledger/:ledgerId')
+  @ApiOkResponse({ description: 'Ledger report.' })
+  ledgerReport(@Param('ledgerId') ledgerId: string, @Query() query: AccountingQueryDto) {
+    return this.accountingService.ledgerReport(ledgerId, query);
+  }
+}
