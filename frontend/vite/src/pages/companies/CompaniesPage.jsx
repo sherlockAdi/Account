@@ -26,6 +26,10 @@ import Typography from '@mui/material/Typography';
 import EditOutlined from '@ant-design/icons/EditOutlined';
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 
+import DateField from 'components/DateField';
+
+import { formatDate, toIsoDate } from 'utils/dateFormat';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 
 async function api(path, options) {
@@ -102,7 +106,7 @@ const emptySeries = {
 };
 
 function dateValue(value) {
-  return value ? value.slice(0, 10) : '';
+  return toIsoDate(value);
 }
 
 export default function CompaniesPage() {
@@ -293,7 +297,7 @@ function CompanyGrid({ companies, onCreate, onEdit }) {
             <TableRow key={company.id} hover>
               <TableCell><Typography variant="subtitle1">{company.name}</Typography><Typography variant="caption" color="text.secondary">{company.code}</Typography></TableCell>
               <TableCell>{company.gstin || '-'}</TableCell>
-              <TableCell>{dateValue(company.financialYearStart)}</TableCell>
+              <TableCell>{formatDate(company.financialYearStart)}</TableCell>
               <TableCell>{company.branches.length}</TableCell>
               <TableCell>{company.isActive ? 'Active' : 'Inactive'}</TableCell>
               <TableCell align="right"><Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(company)}>Edit</Button></TableCell>
@@ -378,8 +382,8 @@ function CompanyModal({ open, form, setForm, onClose, onSubmit }) {
         <DialogContent><Grid container spacing={2} sx={{ mt: 1 }}>{[
           ['name', 'Name'], ['legalName', 'Legal name'], ['code', 'Code'], ['gstin', 'GSTIN'], ['pan', 'PAN'], ['email', 'Email'], ['phone', 'Phone'], ['addressLine1', 'Address line 1'], ['addressLine2', 'Address line 2'], ['city', 'City'], ['state', 'State'], ['country', 'Country'], ['pincode', 'Pincode']
         ].map(([key, label]) => <Grid key={key} size={{ xs: 12, md: 6 }}><TextField fullWidth label={label} value={form[key] || ''} onChange={(event) => setForm({ ...form, [key]: event.target.value })} required={['name', 'code'].includes(key)} /></Grid>)}
-          <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth type="date" label="Financial year start" value={form.financialYearStart} onChange={(event) => setForm({ ...form, financialYearStart: event.target.value })} InputLabelProps={{ shrink: true }} required /></Grid>
-          <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth type="date" label="Books start date" value={form.booksStartDate} onChange={(event) => setForm({ ...form, booksStartDate: event.target.value })} InputLabelProps={{ shrink: true }} required /></Grid>
+          <Grid size={{ xs: 12, md: 6 }}><DateField fullWidth label="Financial year start" value={form.financialYearStart} onChange={(event) => setForm({ ...form, financialYearStart: event.target.value })} required /></Grid>
+          <Grid size={{ xs: 12, md: 6 }}><DateField fullWidth label="Books start date" value={form.booksStartDate} onChange={(event) => setForm({ ...form, booksStartDate: event.target.value })} required /></Grid>
           <Grid size={12}><FormControlLabel control={<Checkbox checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />} label="Active" /></Grid>
         </Grid></DialogContent>
         <DialogActions><Button onClick={onClose}>Cancel</Button><Button type="submit" variant="contained">Save</Button></DialogActions>
@@ -439,3 +443,7 @@ function SeriesModal({ open, companies, form, setForm, onClose, onSubmit }) {
     </Dialog>
   );
 }
+
+
+
+

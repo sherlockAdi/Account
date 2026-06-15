@@ -31,8 +31,11 @@ import StopOutlined from '@ant-design/icons/StopOutlined';
 
 import { useAuth } from 'contexts/AuthContext';
 
+import DateField from 'components/DateField';
+import { formatDate, todayIso } from 'utils/dateFormat';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayIso();
 const money = (value) => Number(value || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
 
 async function api(path, token, options) {
@@ -164,7 +167,7 @@ function Dashboard({ dashboard, onInspect }) {
 }
 
 function AuditLog({ logs, filters, setFilters, modules, onApply, onInspect }) {
-  return <Stack spacing={2} sx={{ p: 2.5 }}><Grid container spacing={1.5}><Grid size={{ xs: 12, md: 3 }}><TextField select fullWidth size="small" label="Module" value={filters.module} onChange={(e) => setFilters({ ...filters, module: e.target.value })}><MenuItem value="">All Modules</MenuItem>{modules.map((module) => <MenuItem key={module} value={module}>{module}</MenuItem>)}</TextField></Grid><Grid size={{ xs: 12, md: 2 }}><TextField select fullWidth size="small" label="Outcome" value={filters.outcome} onChange={(e) => setFilters({ ...filters, outcome: e.target.value })}><MenuItem value="">All</MenuItem><MenuItem value="SUCCESS">Success</MenuItem><MenuItem value="FAILURE">Failure</MenuItem></TextField></Grid><Grid size={{ xs: 6, md: 2 }}><TextField fullWidth size="small" type="date" label="From" value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} InputLabelProps={{ shrink: true }} /></Grid><Grid size={{ xs: 6, md: 2 }}><TextField fullWidth size="small" type="date" label="To" value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} InputLabelProps={{ shrink: true }} /></Grid><Grid size={{ xs: 12, md: 2 }}><Button fullWidth variant="contained" onClick={onApply}>Apply Filters</Button></Grid></Grid><LogTable logs={logs} onInspect={onInspect} /></Stack>;
+  return <Stack spacing={2} sx={{ p: 2.5 }}><Grid container spacing={1.5}><Grid size={{ xs: 12, md: 3 }}><TextField select fullWidth size="small" label="Module" value={filters.module} onChange={(e) => setFilters({ ...filters, module: e.target.value })}><MenuItem value="">All Modules</MenuItem>{modules.map((module) => <MenuItem key={module} value={module}>{module}</MenuItem>)}</TextField></Grid><Grid size={{ xs: 12, md: 2 }}><TextField select fullWidth size="small" label="Outcome" value={filters.outcome} onChange={(e) => setFilters({ ...filters, outcome: e.target.value })}><MenuItem value="">All</MenuItem><MenuItem value="SUCCESS">Success</MenuItem><MenuItem value="FAILURE">Failure</MenuItem></TextField></Grid><Grid size={{ xs: 6, md: 2 }}><DateField fullWidth size="small" label="From" value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} /></Grid><Grid size={{ xs: 6, md: 2 }}><DateField fullWidth size="small" label="To" value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} /></Grid><Grid size={{ xs: 12, md: 2 }}><Button fullWidth variant="contained" onClick={onApply}>Apply Filters</Button></Grid></Grid><LogTable logs={logs} onInspect={onInspect} /></Stack>;
 }
 
 function EditLog({ logs, onInspect }) {
@@ -180,7 +183,7 @@ function VoucherVerification({ vouchers, onVerify }) {
     const debit = voucher.lines.filter((line) => line.type === 'DEBIT').reduce((sum, line) => sum + Number(line.amount), 0);
     const credit = voucher.lines.filter((line) => line.type === 'CREDIT').reduce((sum, line) => sum + Number(line.amount), 0);
     const status = voucher.verification?.status || 'UNVERIFIED';
-    return <TableRow key={voucher.id}><TableCell>{voucher.voucherDate.slice(0, 10)}</TableCell><TableCell>{voucher.voucherNo}<br /><Typography variant="caption">{voucher.voucherType}</Typography></TableCell><TableCell>{voucher.lines.map((line) => line.ledger.name).join(', ')}</TableCell><TableCell align="right">{money(debit)}</TableCell><TableCell align="right">{money(credit)}</TableCell><TableCell><VerificationChip status={status} />{voucher.verification?.verifiedBy && <Typography variant="caption" display="block">{voucher.verification.verifiedBy.fullName}</Typography>}</TableCell><TableCell align="right"><Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}><Button size="small" color="success" startIcon={<CheckCircleOutlined />} onClick={() => onVerify(voucher, 'VERIFIED')}>Verify</Button><Button size="small" color="error" startIcon={<StopOutlined />} onClick={() => onVerify(voucher, 'REJECTED')}>Reject</Button></Stack></TableCell></TableRow>;
+    return <TableRow key={voucher.id}><TableCell>{formatDate(voucher.voucherDate)}</TableCell><TableCell>{voucher.voucherNo}<br /><Typography variant="caption">{voucher.voucherType}</Typography></TableCell><TableCell>{voucher.lines.map((line) => line.ledger.name).join(', ')}</TableCell><TableCell align="right">{money(debit)}</TableCell><TableCell align="right">{money(credit)}</TableCell><TableCell><VerificationChip status={status} />{voucher.verification?.verifiedBy && <Typography variant="caption" display="block">{voucher.verification.verifiedBy.fullName}</Typography>}</TableCell><TableCell align="right"><Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}><Button size="small" color="success" startIcon={<CheckCircleOutlined />} onClick={() => onVerify(voucher, 'VERIFIED')}>Verify</Button><Button size="small" color="error" startIcon={<StopOutlined />} onClick={() => onVerify(voucher, 'REJECTED')}>Reject</Button></Stack></TableCell></TableRow>;
   })}</TableBody></Table></TableContainer>;
 }
 
@@ -209,3 +212,7 @@ function VerificationChip({ status }) {
   const colors = { VERIFIED: 'success', REJECTED: 'error', UNVERIFIED: 'warning' };
   return <Chip size="small" color={colors[status]} label={status} />;
 }
+
+
+
+

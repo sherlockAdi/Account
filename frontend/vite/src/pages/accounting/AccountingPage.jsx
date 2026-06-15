@@ -28,6 +28,9 @@ import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import ArrowRightOutlined from '@ant-design/icons/ArrowRightOutlined';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
+import DateField from 'components/DateField';
+import { formatDate, todayIso } from 'utils/dateFormat';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 
 async function api(path, options) {
@@ -78,7 +81,7 @@ export default function AccountingPage() {
   const [voucherForm, setVoucherForm] = useState({
     voucherTypeId: '',
     voucherNo: '',
-    voucherDate: new Date().toISOString().slice(0, 10),
+    voucherDate: todayIso(),
     narration: '',
     lines: [
       { ledgerId: '', type: 'DEBIT', amount: 0, narration: '' },
@@ -312,7 +315,7 @@ export default function AccountingPage() {
               {ledgerReport && (
                 <Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Voucher</TableCell><TableCell>Narration</TableCell><TableCell align="right">Debit</TableCell><TableCell align="right">Credit</TableCell><TableCell align="right">Balance</TableCell></TableRow></TableHead><TableBody>{ledgerReport.entries.map((entry, index) => {
                   const voucher = vouchers.find((item) => item.voucherNo === entry.voucherNo && item.voucherType === entry.voucherType);
-                  return <TableRow hover key={`${entry.voucherNo}-${index}`}><TableCell>{entry.date.slice(0, 10)}</TableCell><TableCell><Link component="button" underline="always" disabled={!voucher} onClick={() => voucher && openVoucher(voucher)}>{entry.voucherType} {entry.voucherNo}</Link></TableCell><TableCell>{entry.narration}</TableCell><TableCell align="right">{entry.debit.toFixed(2)}</TableCell><TableCell align="right">{entry.credit.toFixed(2)}</TableCell><TableCell align="right">{entry.balance.toFixed(2)}</TableCell></TableRow>;
+                  return <TableRow hover key={`${entry.voucherNo}-${index}`}><TableCell>{formatDate(entry.date)}</TableCell><TableCell><Link component="button" underline="always" disabled={!voucher} onClick={() => voucher && openVoucher(voucher)}>{entry.voucherType} {entry.voucherNo}</Link></TableCell><TableCell>{entry.narration}</TableCell><TableCell align="right">{entry.debit.toFixed(2)}</TableCell><TableCell align="right">{entry.credit.toFixed(2)}</TableCell><TableCell align="right">{entry.balance.toFixed(2)}</TableCell></TableRow>;
                 })}</TableBody></Table>
               )}
             </Stack>
@@ -339,7 +342,7 @@ export default function AccountingPage() {
       <Dialog open={voucherOpen} onClose={() => setVoucherOpen(false)} fullWidth maxWidth="md">
         <Box component="form" onSubmit={(event) => { event.preventDefault(); save(() => api('/accounting/vouchers', { method: 'POST', body: JSON.stringify({ ...voucherForm, lines: voucherForm.lines.map((line) => ({ ...line, amount: Number(line.amount) })) }) }), 'Voucher posted', () => setVoucherOpen(false)); }}>
           <DialogTitle>Create Voucher</DialogTitle>
-          <DialogContent><Stack spacing={2} sx={{ mt: 1 }}><Grid container spacing={2}><Grid size={{ xs: 12, md: 4 }}><TextField select fullWidth label="Voucher Type" value={voucherForm.voucherTypeId} onChange={(event) => setVoucherForm({ ...voucherForm, voucherTypeId: event.target.value })}>{voucherTypes.map((type) => <MenuItem key={type.id} value={type.id}>{type.name} ({type.prefix}{String(type.nextNumber).padStart(type.padding, '0')}{type.suffix || ''})</MenuItem>)}</TextField></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth label="Voucher No (optional)" value={voucherForm.voucherNo} onChange={(event) => setVoucherForm({ ...voucherForm, voucherNo: event.target.value })} helperText="Leave blank for auto number" /></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth type="date" label="Date" value={voucherForm.voucherDate} onChange={(event) => setVoucherForm({ ...voucherForm, voucherDate: event.target.value })} InputLabelProps={{ shrink: true }} /></Grid></Grid><TextField label="Narration" value={voucherForm.narration} onChange={(event) => setVoucherForm({ ...voucherForm, narration: event.target.value })} />
+          <DialogContent><Stack spacing={2} sx={{ mt: 1 }}><Grid container spacing={2}><Grid size={{ xs: 12, md: 4 }}><TextField select fullWidth label="Voucher Type" value={voucherForm.voucherTypeId} onChange={(event) => setVoucherForm({ ...voucherForm, voucherTypeId: event.target.value })}>{voucherTypes.map((type) => <MenuItem key={type.id} value={type.id}>{type.name} ({type.prefix}{String(type.nextNumber).padStart(type.padding, '0')}{type.suffix || ''})</MenuItem>)}</TextField></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth label="Voucher No (optional)" value={voucherForm.voucherNo} onChange={(event) => setVoucherForm({ ...voucherForm, voucherNo: event.target.value })} helperText="Leave blank for auto number" /></Grid><Grid size={{ xs: 12, md: 4 }}><DateField fullWidth label="Date" value={voucherForm.voucherDate} onChange={(event) => setVoucherForm({ ...voucherForm, voucherDate: event.target.value })} /></Grid></Grid><TextField label="Narration" value={voucherForm.narration} onChange={(event) => setVoucherForm({ ...voucherForm, narration: event.target.value })} />
             {voucherForm.lines.map((line, index) => <Grid container spacing={2} key={index}><Grid size={{ xs: 12, md: 5 }}><TextField select fullWidth label="Ledger" value={line.ledgerId} onChange={(event) => updateLine(index, 'ledgerId', event.target.value)}>{ledgers.map((ledger) => <MenuItem key={ledger.id} value={ledger.id}>{ledger.name}</MenuItem>)}</TextField></Grid><Grid size={{ xs: 12, md: 3 }}><TextField select fullWidth label="Type" value={line.type} onChange={(event) => updateLine(index, 'type', event.target.value)}>{dc.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}</TextField></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth type="number" label="Amount" value={line.amount} onChange={(event) => updateLine(index, 'amount', event.target.value)} /></Grid></Grid>)}
             <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}><Button onClick={addLine}>Add Line</Button><Typography>Debit {totals.debit.toFixed(2)} | Credit {totals.credit.toFixed(2)}</Typography></Stack>
           </Stack></DialogContent>
@@ -359,7 +362,7 @@ export default function AccountingPage() {
         <DialogTitle>{selectedVoucher?.voucherType.toUpperCase()} Voucher: {selectedVoucher?.voucherNo}</DialogTitle>
         <DialogContent>
           {selectedVoucher && <Stack spacing={2} sx={{ mt: 1 }}>
-            <Grid container spacing={2}><Grid size={4}><Typography color="text.secondary">Date</Typography><Typography>{selectedVoucher.voucherDate.slice(0, 10)}</Typography></Grid><Grid size={4}><Typography color="text.secondary">Status</Typography><Chip size="small" color="success" label={selectedVoucher.status} /></Grid><Grid size={4}><Typography color="text.secondary">Branch</Typography><Typography>{selectedVoucher.branch?.name || '-'}</Typography></Grid></Grid>
+            <Grid container spacing={2}><Grid size={4}><Typography color="text.secondary">Date</Typography><Typography>{formatDate(selectedVoucher.voucherDate)}</Typography></Grid><Grid size={4}><Typography color="text.secondary">Status</Typography><Chip size="small" color="success" label={selectedVoucher.status} /></Grid><Grid size={4}><Typography color="text.secondary">Branch</Typography><Typography>{selectedVoucher.branch?.name || '-'}</Typography></Grid></Grid>
             <Typography>{selectedVoucher.narration || 'No narration'}</Typography>
             <Table size="small"><TableHead><TableRow><TableCell>Ledger</TableCell><TableCell>Narration</TableCell><TableCell align="right">Debit</TableCell><TableCell align="right">Credit</TableCell></TableRow></TableHead><TableBody>{selectedVoucher.lines.map((line) => <TableRow key={line.id}><TableCell><Link component="button" underline="always" onClick={() => { closeVoucher(); openLedger(line.ledgerId); }}>{line.ledger.name}</Link></TableCell><TableCell>{line.narration || '-'}</TableCell><TableCell align="right">{line.type === 'DEBIT' ? Number(line.amount).toFixed(2) : '-'}</TableCell><TableCell align="right">{line.type === 'CREDIT' ? Number(line.amount).toFixed(2) : '-'}</TableCell></TableRow>)}</TableBody></Table>
           </Stack>}
@@ -375,5 +378,9 @@ function GridPanel({ label, onCreate, children }) {
 }
 
 function VoucherTable({ vouchers, onVoucher, onVoucherType }) {
-  return <Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Type</TableCell><TableCell>Voucher No</TableCell><TableCell>Narration</TableCell><TableCell>Lines</TableCell></TableRow></TableHead><TableBody>{vouchers.map((voucher) => <TableRow hover key={voucher.id}><TableCell>{voucher.voucherDate.slice(0, 10)}</TableCell><TableCell><Link component="button" underline="always" onClick={() => onVoucherType(voucher.voucherType)}>{voucher.voucherType}</Link></TableCell><TableCell><Link component="button" underline="always" onClick={() => onVoucher(voucher)}>{voucher.voucherNo}</Link></TableCell><TableCell>{voucher.narration}</TableCell><TableCell>{voucher.lines.map((line) => `${line.ledger.name} ${line.type} ${Number(line.amount).toFixed(2)}`).join(' | ')}</TableCell></TableRow>)}</TableBody></Table>;
+  return <Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Type</TableCell><TableCell>Voucher No</TableCell><TableCell>Narration</TableCell><TableCell>Lines</TableCell></TableRow></TableHead><TableBody>{vouchers.map((voucher) => <TableRow hover key={voucher.id}><TableCell>{formatDate(voucher.voucherDate)}</TableCell><TableCell><Link component="button" underline="always" onClick={() => onVoucherType(voucher.voucherType)}>{voucher.voucherType}</Link></TableCell><TableCell><Link component="button" underline="always" onClick={() => onVoucher(voucher)}>{voucher.voucherNo}</Link></TableCell><TableCell>{voucher.narration}</TableCell><TableCell>{voucher.lines.map((line) => `${line.ledger.name} ${line.type} ${Number(line.amount).toFixed(2)}`).join(' | ')}</TableCell></TableRow>)}</TableBody></Table>;
 }
+
+
+
+

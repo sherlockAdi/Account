@@ -22,6 +22,8 @@ import TextField from '@mui/material/TextField';
 import EditOutlined from '@ant-design/icons/EditOutlined';
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 
+import { formatDate } from 'utils/dateFormat';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 
 const emptyTaxForm = { id: '', name: '', code: '', rate: 18, cgstRate: 9, sgstRate: 9, igstRate: 18 };
@@ -225,7 +227,7 @@ function InvoiceTaxTable({ rows, partyKey, partyLabel }) {
       <TableBody>
         {rows.map((row) => (
           <TableRow key={row.id}>
-            <TableCell>{row.invoiceDate?.slice(0, 10)}</TableCell>
+            <TableCell>{row.invoiceDate ? formatDate(row.invoiceDate) : ''}</TableCell>
             <TableCell>{row.invoiceNo}</TableCell>
             <TableCell>{row[partyKey]}</TableCell>
             <TableCell align="right">{formatAmount(row.taxableValue)}</TableCell>
@@ -296,3 +298,5 @@ function HsnTable({ title, rows }) {
 function formatAmount(value) {
   return Number(value || 0).toFixed(2);
 }
+
+

@@ -22,8 +22,11 @@ import Typography from '@mui/material/Typography';
 import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
 import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
 
+import DateField from 'components/DateField';
+import { formatDate, todayIso } from 'utils/dateFormat';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayIso();
 const money = (value) => Number(value || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
 
 async function api(path) {
@@ -124,7 +127,7 @@ export default function ReportsPage() {
     {
       name: 'day-book',
       rows: dayBook.map((voucher) => ({
-        date: voucher.voucherDate.slice(0, 10),
+        date: formatDate(voucher.voucherDate),
         voucherNo: voucher.voucherNo,
         voucherType: voucher.voucherType,
         narration: voucher.narration,
@@ -154,8 +157,8 @@ export default function ReportsPage() {
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { lg: 'center' } }}>
           <Box><Typography variant="h3">Reports & MIS</Typography><Typography color="text.secondary">Financial, inventory, statutory and management reporting in one workspace.</Typography></Box>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-            <TextField size="small" type="date" label="From" value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} InputLabelProps={{ shrink: true }} />
-            <TextField size="small" type="date" label="To" value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} InputLabelProps={{ shrink: true }} />
+            <DateField size="small" label="From" value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} />
+            <DateField size="small" label="To" value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} />
             <Button variant="contained" startIcon={<ReloadOutlined />} onClick={loadReports} disabled={loading}>{loading ? 'Loading...' : 'Apply'}</Button>
             <Button variant="outlined" startIcon={<DownloadOutlined />} onClick={exportCsv}>Export CSV</Button>
           </Stack>
@@ -234,5 +237,9 @@ function GstSummary({ gst }) {
 }
 
 function DayBook({ vouchers }) {
-  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Voucher</TableCell><TableCell>Narration</TableCell><TableCell>Ledger Lines</TableCell><TableCell align="right">Amount</TableCell></TableRow></TableHead><TableBody>{vouchers.map((voucher) => <TableRow key={voucher.id}><TableCell>{voucher.voucherDate.slice(0, 10)}</TableCell><TableCell>{voucher.voucherNo}<br /><Typography variant="caption">{voucher.voucherType}</Typography></TableCell><TableCell>{voucher.narration || '-'}</TableCell><TableCell>{voucher.lines.map((line) => `${line.ledger.name} (${line.type})`).join(', ')}</TableCell><TableCell align="right">{money(voucher.lines.filter((line) => line.type === 'DEBIT').reduce((sum, line) => sum + Number(line.amount), 0))}</TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Voucher</TableCell><TableCell>Narration</TableCell><TableCell>Ledger Lines</TableCell><TableCell align="right">Amount</TableCell></TableRow></TableHead><TableBody>{vouchers.map((voucher) => <TableRow key={voucher.id}><TableCell>{formatDate(voucher.voucherDate)}</TableCell><TableCell>{voucher.voucherNo}<br /><Typography variant="caption">{voucher.voucherType}</Typography></TableCell><TableCell>{voucher.narration || '-'}</TableCell><TableCell>{voucher.lines.map((line) => `${line.ledger.name} (${line.type})`).join(', ')}</TableCell><TableCell align="right">{money(voucher.lines.filter((line) => line.type === 'DEBIT').reduce((sum, line) => sum + Number(line.amount), 0))}</TableCell></TableRow>)}</TableBody></Table></TableContainer>;
 }
+
+
+
+

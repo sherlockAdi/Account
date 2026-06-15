@@ -28,8 +28,11 @@ import Typography from '@mui/material/Typography';
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import ToolOutlined from '@ant-design/icons/ToolOutlined';
 
+import DateField from 'components/DateField';
+import { formatDate, todayIso } from 'utils/dateFormat';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayIso();
 
 async function api(path, options) {
   const response = await fetch(`${API_URL}${path}`, {
@@ -257,8 +260,8 @@ export default function ManufacturingPage() {
                 <Grid size={{ xs: 12, md: 3 }}><TextField fullWidth type="number" label="Version" value={bomForm.version} onChange={(event) => setBomForm({ ...bomForm, version: event.target.value })} /></Grid>
                 <Grid size={{ xs: 12, md: 8 }}><TextField select fullWidth label="Finished Item" value={bomForm.finishedItemId} onChange={(event) => setBomForm({ ...bomForm, finishedItemId: event.target.value })}>{items.map((item) => <MenuItem key={item.id} value={item.id}>{item.name} ({item.unit.code})</MenuItem>)}</TextField></Grid>
                 <Grid size={{ xs: 12, md: 4 }}><TextField fullWidth type="number" label="Output Quantity" value={bomForm.outputQuantity} onChange={(event) => setBomForm({ ...bomForm, outputQuantity: event.target.value })} /></Grid>
-                <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth type="date" label="Effective From" value={bomForm.effectiveFrom} onChange={(event) => setBomForm({ ...bomForm, effectiveFrom: event.target.value })} InputLabelProps={{ shrink: true }} /></Grid>
-                <Grid size={{ xs: 12, md: 6 }}><TextField fullWidth type="date" label="Effective To" value={bomForm.effectiveTo} onChange={(event) => setBomForm({ ...bomForm, effectiveTo: event.target.value })} InputLabelProps={{ shrink: true }} /></Grid>
+                <Grid size={{ xs: 12, md: 6 }}><DateField fullWidth label="Effective From" value={bomForm.effectiveFrom} onChange={(event) => setBomForm({ ...bomForm, effectiveFrom: event.target.value })} /></Grid>
+                <Grid size={{ xs: 12, md: 6 }}><DateField fullWidth label="Effective To" value={bomForm.effectiveTo} onChange={(event) => setBomForm({ ...bomForm, effectiveTo: event.target.value })} /></Grid>
               </Grid>
               <Typography variant="h5">Components</Typography>
               {bomForm.components.map((component, index) => (
@@ -300,9 +303,9 @@ export default function ManufacturingPage() {
             <Grid container spacing={2}>
               <Grid size={6}><TextField fullWidth label="Order No" value={orderForm.orderNo} onChange={(event) => setOrderForm({ ...orderForm, orderNo: event.target.value })} /></Grid>
               <Grid size={6}><TextField fullWidth type="number" label="Planned Quantity" value={orderForm.plannedQuantity} onChange={(event) => setOrderForm({ ...orderForm, plannedQuantity: event.target.value })} /></Grid>
-              <Grid size={4}><TextField fullWidth type="date" label="Order Date" value={orderForm.orderDate} onChange={(event) => setOrderForm({ ...orderForm, orderDate: event.target.value })} InputLabelProps={{ shrink: true }} /></Grid>
-              <Grid size={4}><TextField fullWidth type="date" label="Start Date" value={orderForm.plannedStartDate} onChange={(event) => setOrderForm({ ...orderForm, plannedStartDate: event.target.value })} InputLabelProps={{ shrink: true }} /></Grid>
-              <Grid size={4}><TextField fullWidth type="date" label="End Date" value={orderForm.plannedEndDate} onChange={(event) => setOrderForm({ ...orderForm, plannedEndDate: event.target.value })} InputLabelProps={{ shrink: true }} /></Grid>
+              <Grid size={4}><DateField fullWidth label="Order Date" value={orderForm.orderDate} onChange={(event) => setOrderForm({ ...orderForm, orderDate: event.target.value })} /></Grid>
+              <Grid size={4}><DateField fullWidth label="Start Date" value={orderForm.plannedStartDate} onChange={(event) => setOrderForm({ ...orderForm, plannedStartDate: event.target.value })} /></Grid>
+              <Grid size={4}><DateField fullWidth label="End Date" value={orderForm.plannedEndDate} onChange={(event) => setOrderForm({ ...orderForm, plannedEndDate: event.target.value })} /></Grid>
             </Grid>
             <TextField label="Notes" multiline minRows={2} value={orderForm.notes} onChange={(event) => setOrderForm({ ...orderForm, notes: event.target.value })} />
           </Stack></DialogContent>
@@ -329,7 +332,7 @@ export default function ManufacturingPage() {
             </Alert>
             <Grid container spacing={2}>
               <Grid size={4}><TextField fullWidth label="Entry No" value={completeForm.entryNo} onChange={(event) => setCompleteForm({ ...completeForm, entryNo: event.target.value })} /></Grid>
-              <Grid size={4}><TextField fullWidth type="date" label="Production Date" value={completeForm.productionDate} onChange={(event) => setCompleteForm({ ...completeForm, productionDate: event.target.value })} InputLabelProps={{ shrink: true }} /></Grid>
+              <Grid size={4}><DateField fullWidth label="Production Date" value={completeForm.productionDate} onChange={(event) => setCompleteForm({ ...completeForm, productionDate: event.target.value })} /></Grid>
               <Grid size={4}><TextField fullWidth type="number" label="Output Quantity" value={completeForm.quantity} onChange={(event) => setCompleteForm({ ...completeForm, quantity: event.target.value })} /></Grid>
             </Grid>
             <Table size="small">
@@ -361,21 +364,25 @@ function DashboardPanel({ dashboard, orders }) {
 }
 
 function BomTable({ boms }) {
-  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>BOM</TableCell><TableCell>Finished Item</TableCell><TableCell>Output</TableCell><TableCell>Components</TableCell><TableCell>Effective Period</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{boms.map((bom) => <TableRow key={bom.id}><TableCell>{bom.name}<br />{bom.code} v{bom.version}</TableCell><TableCell>{bom.finishedItem.name}</TableCell><TableCell>{Number(bom.outputQuantity).toFixed(3)} {bom.finishedItem.unit.code}</TableCell><TableCell>{bom.components.map((component) => `${component.item.name}: ${Number(component.quantity).toFixed(3)} ${component.item.unit.code}${Number(component.wastagePercent) ? ` + ${Number(component.wastagePercent)}%` : ''}`).join(', ')}</TableCell><TableCell>{bom.effectiveFrom.slice(0, 10)} to {bom.effectiveTo?.slice(0, 10) || 'Open'}</TableCell><TableCell><Chip size="small" color={bom.isActive ? 'success' : 'default'} label={bom.isActive ? 'Active' : 'Inactive'} /></TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>BOM</TableCell><TableCell>Finished Item</TableCell><TableCell>Output</TableCell><TableCell>Components</TableCell><TableCell>Effective Period</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{boms.map((bom) => <TableRow key={bom.id}><TableCell>{bom.name}<br />{bom.code} v{bom.version}</TableCell><TableCell>{bom.finishedItem.name}</TableCell><TableCell>{Number(bom.outputQuantity).toFixed(3)} {bom.finishedItem.unit.code}</TableCell><TableCell>{bom.components.map((component) => `${component.item.name}: ${Number(component.quantity).toFixed(3)} ${component.item.unit.code}${Number(component.wastagePercent) ? ` + ${Number(component.wastagePercent)}%` : ''}`).join(', ')}</TableCell><TableCell>{formatDate(bom.effectiveFrom)} to {bom.effectiveTo ? formatDate(bom.effectiveTo) : '' || 'Open'}</TableCell><TableCell><Chip size="small" color={bom.isActive ? 'success' : 'default'} label={bom.isActive ? 'Active' : 'Inactive'} /></TableCell></TableRow>)}</TableBody></Table></TableContainer>;
 }
 
 function OrderTable({ orders, onComplete, compact = false }) {
   return <TableContainer><Table size="small"><TableHead><TableRow><TableCell>Order</TableCell><TableCell>Finished Item</TableCell><TableCell>Warehouse</TableCell><TableCell>Progress</TableCell><TableCell>Status</TableCell>{!compact && <TableCell align="right">Action</TableCell>}</TableRow></TableHead><TableBody>{orders.map((order) => {
     const progress = Number(order.plannedQuantity) ? (Number(order.completedQuantity) / Number(order.plannedQuantity)) * 100 : 0;
-    return <TableRow key={order.id}><TableCell>{order.orderNo}<br />{order.orderDate.slice(0, 10)}</TableCell><TableCell>{order.bom.finishedItem.name}<br />BOM {order.bom.code} v{order.bom.version}</TableCell><TableCell>{order.warehouse.name}</TableCell><TableCell sx={{ minWidth: 180 }}><Typography variant="caption">{Number(order.completedQuantity).toFixed(3)} / {Number(order.plannedQuantity).toFixed(3)} {order.bom.finishedItem.unit.code}</Typography><LinearProgress variant="determinate" value={Math.min(100, progress)} /></TableCell><TableCell><StatusChip status={order.status} /></TableCell>{!compact && <TableCell align="right"><Button size="small" variant="contained" disabled={!['PLANNED', 'IN_PROGRESS'].includes(order.status)} onClick={() => onComplete(order)}>Post Production</Button></TableCell>}</TableRow>;
+    return <TableRow key={order.id}><TableCell>{order.orderNo}<br />{formatDate(order.orderDate)}</TableCell><TableCell>{order.bom.finishedItem.name}<br />BOM {order.bom.code} v{order.bom.version}</TableCell><TableCell>{order.warehouse.name}</TableCell><TableCell sx={{ minWidth: 180 }}><Typography variant="caption">{Number(order.completedQuantity).toFixed(3)} / {Number(order.plannedQuantity).toFixed(3)} {order.bom.finishedItem.unit.code}</Typography><LinearProgress variant="determinate" value={Math.min(100, progress)} /></TableCell><TableCell><StatusChip status={order.status} /></TableCell>{!compact && <TableCell align="right"><Button size="small" variant="contained" disabled={!['PLANNED', 'IN_PROGRESS'].includes(order.status)} onClick={() => onComplete(order)}>Post Production</Button></TableCell>}</TableRow>;
   })}</TableBody></Table></TableContainer>;
 }
 
 function ProductionHistory({ entries }) {
-  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Entry / Order</TableCell><TableCell>Output</TableCell><TableCell>Consumed Materials</TableCell><TableCell align="right">Material Cost</TableCell><TableCell align="right">Unit Cost</TableCell></TableRow></TableHead><TableBody>{entries.map((entry) => <TableRow key={entry.id}><TableCell>{entry.productionDate.slice(0, 10)}</TableCell><TableCell>{entry.entryNo}<br />{entry.order.orderNo}</TableCell><TableCell>{entry.outputItem.name}: {Number(entry.quantity).toFixed(3)} {entry.outputItem.unit.code}</TableCell><TableCell>{entry.consumptions.map((consumption) => `${consumption.item.name}: ${Number(consumption.quantity).toFixed(3)} ${consumption.item.unit.code}`).join(', ')}</TableCell><TableCell align="right">{Number(entry.materialCost).toFixed(2)}</TableCell><TableCell align="right">{Number(entry.unitCost).toFixed(2)}</TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Entry / Order</TableCell><TableCell>Output</TableCell><TableCell>Consumed Materials</TableCell><TableCell align="right">Material Cost</TableCell><TableCell align="right">Unit Cost</TableCell></TableRow></TableHead><TableBody>{entries.map((entry) => <TableRow key={entry.id}><TableCell>{formatDate(entry.productionDate)}</TableCell><TableCell>{entry.entryNo}<br />{entry.order.orderNo}</TableCell><TableCell>{entry.outputItem.name}: {Number(entry.quantity).toFixed(3)} {entry.outputItem.unit.code}</TableCell><TableCell>{entry.consumptions.map((consumption) => `${consumption.item.name}: ${Number(consumption.quantity).toFixed(3)} ${consumption.item.unit.code}`).join(', ')}</TableCell><TableCell align="right">{Number(entry.materialCost).toFixed(2)}</TableCell><TableCell align="right">{Number(entry.unitCost).toFixed(2)}</TableCell></TableRow>)}</TableBody></Table></TableContainer>;
 }
 
 function StatusChip({ status }) {
   const colors = { PLANNED: 'default', IN_PROGRESS: 'warning', COMPLETED: 'success', CANCELLED: 'error' };
   return <Chip size="small" color={colors[status]} label={status.replace('_', ' ')} />;
 }
+
+
+
+

@@ -40,6 +40,8 @@ import ShopOutlined from '@ant-design/icons/ShopOutlined';
 
 import { useAuth } from 'contexts/AuthContext';
 
+import DateField from 'components/DateField';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 const categories = ['ALL', 'ACCOUNTING', 'AUTOMATION', 'COMMERCE', 'COMPLIANCE', 'INTEGRATION', 'REPORTING'];
 const eventOptions = ['sales.invoice.created', 'sales.return.created', 'purchase.invoice.created', 'inventory.low_stock', 'voucher.posted', 'payroll.processed'];
@@ -198,7 +200,7 @@ export default function MarketplacePage() {
 
       <Dialog open={apiOpen} onClose={() => setApiOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>Create API App</DialogTitle>
-        <DialogContent><Stack spacing={2} sx={{ mt: 1 }}><TextField label="Application Name" value={apiForm.name} onChange={(e) => setApiForm({ ...apiForm, name: e.target.value })} required /><TextField select label="Company Scope" value={apiForm.companyId} onChange={(e) => setApiForm({ ...apiForm, companyId: e.target.value })}><MenuItem value="">All companies</MenuItem>{companies.map((company) => <MenuItem key={company.id} value={company.id}>{company.name}</MenuItem>)}</TextField><TextField select SelectProps={{ multiple: true }} label="Permissions" value={apiForm.scopes} onChange={(e) => setApiForm({ ...apiForm, scopes: e.target.value })}>{scopeOptions.map((scope) => <MenuItem key={scope} value={scope}>{scope}</MenuItem>)}</TextField><TextField type="date" label="Expires On (optional)" value={apiForm.expiresAt} onChange={(e) => setApiForm({ ...apiForm, expiresAt: e.target.value })} InputLabelProps={{ shrink: true }} /></Stack></DialogContent>
+        <DialogContent><Stack spacing={2} sx={{ mt: 1 }}><TextField label="Application Name" value={apiForm.name} onChange={(e) => setApiForm({ ...apiForm, name: e.target.value })} required /><TextField select label="Company Scope" value={apiForm.companyId} onChange={(e) => setApiForm({ ...apiForm, companyId: e.target.value })}><MenuItem value="">All companies</MenuItem>{companies.map((company) => <MenuItem key={company.id} value={company.id}>{company.name}</MenuItem>)}</TextField><TextField select SelectProps={{ multiple: true }} label="Permissions" value={apiForm.scopes} onChange={(e) => setApiForm({ ...apiForm, scopes: e.target.value })}>{scopeOptions.map((scope) => <MenuItem key={scope} value={scope}>{scope}</MenuItem>)}</TextField><DateField label="Expires On (optional)" value={apiForm.expiresAt} onChange={(e) => setApiForm({ ...apiForm, expiresAt: e.target.value })} /></Stack></DialogContent>
         <DialogActions><Button onClick={() => setApiOpen(false)}>Cancel</Button><Button variant="contained" onClick={submitApiApp}>Generate Credentials</Button></DialogActions>
       </Dialog>
 
@@ -247,3 +249,5 @@ function StatusChip({ status }) {
   const color = status === 'ACTIVE' || status === 'VERIFIED' ? 'success' : status === 'TRIAL' ? 'info' : status === 'FAILING' || status === 'REVOKED' ? 'error' : 'warning';
   return <Chip size="small" color={color} label={status} />;
 }
+
+
