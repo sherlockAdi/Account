@@ -170,13 +170,8 @@ export default function ApprovalsPage() {
     <Grid container spacing={2.75}>
       {(message || error) && <Grid size={12}><Alert severity={error ? 'error' : 'success'} onClose={() => error ? setError('') : setMessage('')}>{error || message}</Alert></Grid>}
       <Grid size={12}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { md: 'center' } }}>
-          <Box><Typography variant="h3">Approvals & Maker-Checker</Typography><Typography color="text.secondary">Route high-value ERP transactions through controlled, auditable approval chains.</Typography></Box>
-          <Stack direction="row" spacing={1}><Chip icon={<SafetyCertificateOutlined />} color="primary" label={`Approver: ${user?.fullName || user?.email}`} /><Button onClick={loadData} disabled={loading}>Refresh</Button><Button variant="contained" startIcon={<PlusOutlined />} onClick={openRequest}>Submit Request</Button></Stack>
-        </Stack>
-      </Grid>
-      <Grid size={12}>
         <Box sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+          <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end', p: 2, pb: 0 }}><Chip icon={<SafetyCertificateOutlined />} color="primary" label={`Approver: ${user?.fullName || user?.email}`} /><Button onClick={loadData} disabled={loading}>Refresh</Button><Button variant="contained" startIcon={<PlusOutlined />} onClick={openRequest}>Submit Request</Button></Stack>
           <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" sx={{ px: 2, borderBottom: 1, borderColor: 'divider' }}>
             <Tab label="Overview" /><Tab label={`My Inbox (${dashboard.myPending || 0})`} /><Tab label="All Requests" /><Tab label="Policies" /><Tab label="Decision History" />
           </Tabs>

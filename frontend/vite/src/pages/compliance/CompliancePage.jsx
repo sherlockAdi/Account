@@ -36,7 +36,7 @@ import StopOutlined from '@ant-design/icons/StopOutlined';
 import { useAuth } from 'contexts/AuthContext';
 
 import DateField from 'components/DateField';
-import { formatDate, todayIso } from 'utils/dateFormat';
+import { formatDate, todayIso, toIsoDate } from 'utils/dateFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 const today = () => todayIso();
@@ -46,8 +46,6 @@ const emptyRule = {
   effectiveFrom: today(), effectiveTo: '', description: '', configuration: '{\n  "rate": 18\n}', sourceUrl: '', notes: ''
 };
 const emptyObligation = { name: '', code: 'GSTR3B', periodLabel: 'June 2026', dueDate: '2026-07-20', assignedTo: 'Accounts Team', notes: '' };
-const formatDate = (value) => value ? new Date(value).toLocaleDateString('en-IN') : 'Open ended';
-
 async function api(path, token, options = {}) {
   const response = await fetch(`${API_URL}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -82,7 +80,7 @@ export default function CompliancePage() {
   const filteredRules = useMemo(() => rules.filter((rule) =>
     (!filters.type || rule.type === filters.type) &&
     (!filters.status || rule.status === filters.status) &&
-    (!filters.onDate || (formatDate(rule.effectiveFrom) <= filters.onDate && (!rule.effectiveTo || formatDate(rule.effectiveTo) >= filters.onDate)))
+    (!filters.onDate || (toIsoDate(rule.effectiveFrom) <= filters.onDate && (!rule.effectiveTo || toIsoDate(rule.effectiveTo) >= filters.onDate)))
   ), [rules, filters]);
 
   async function loadData() {
@@ -125,8 +123,8 @@ export default function CompliancePage() {
     setRuleForm(rule ? {
       ...rule,
       companyId: rule.companyId || '',
-      effectiveFrom: formatDate(rule.effectiveFrom),
-      effectiveTo: rule.effectiveTo ? formatDate(rule.effectiveTo) : '' || '',
+      effectiveFrom: toIsoDate(rule.effectiveFrom),
+      effectiveTo: toIsoDate(rule.effectiveTo),
       state: rule.state || '', description: rule.description || '', sourceUrl: rule.sourceUrl || '',
       notes: rule.notes || '', configuration: JSON.stringify(rule.configuration, null, 2)
     } : { ...emptyRule, companyId: companies[0]?.id || '' });
@@ -233,7 +231,7 @@ function Overview({ dashboard, readiness, onRules }) {
 }
 
 function RuleRegister({ rules, filters, setFilters, onEdit, onStatus }) {
-  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={2}><TextField select size="small" label="Rule Type" value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })} sx={{ minWidth: 180 }}><MenuItem value="">All types</MenuItem>{types.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}</TextField><TextField select size="small" label="Status" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} sx={{ minWidth: 160 }}><MenuItem value="">All statuses</MenuItem>{['DRAFT', 'ACTIVE', 'ARCHIVED'].map((status) => <MenuItem key={status} value={status}>{status}</MenuItem>)}</TextField><DateField size="small" label="Effective On" value={filters.onDate} onChange={(e) => setFilters({ ...filters, onDate: e.target.value })} /></Stack><TableContainer><Table><TableHead><TableRow><TableCell>Rule</TableCell><TableCell>Type</TableCell><TableCell>Jurisdiction</TableCell><TableCell>Effective Period</TableCell><TableCell>Scope</TableCell><TableCell>Status</TableCell><TableCell align="right">Actions</TableCell></TableRow></TableHead><TableBody>{rules.map((rule) => <TableRow key={rule.id}><TableCell><Typography fontWeight={600}>{rule.name}</Typography><Typography variant="caption">{rule.code} v{rule.version}</Typography></TableCell><TableCell>{rule.type}</TableCell><TableCell>{rule.country}{rule.state ? ` / ${rule.state}` : ''}</TableCell><TableCell>{formatDate(rule.effectiveFrom)} to {formatDate(rule.effectiveTo)}</TableCell><TableCell>{rule.company?.name || 'All companies'}</TableCell><TableCell><Status status={rule.status} /></TableCell><TableCell align="right">{rule.status !== 'ACTIVE' && <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(rule)}>Edit</Button>}{rule.status === 'DRAFT' && <Button size="small" color="success" onClick={() => onStatus(rule, 'ACTIVE')}>Activate</Button>}{rule.status === 'ACTIVE' && <Button size="small" color="warning" onClick={() => onStatus(rule, 'ARCHIVED')}>Archive</Button>}</TableCell></TableRow>)}</TableBody></Table></TableContainer></Stack>;
+  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={2}><TextField select size="small" label="Rule Type" value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })} sx={{ minWidth: 180 }}><MenuItem value="">All types</MenuItem>{types.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}</TextField><TextField select size="small" label="Status" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} sx={{ minWidth: 160 }}><MenuItem value="">All statuses</MenuItem>{['DRAFT', 'ACTIVE', 'ARCHIVED'].map((status) => <MenuItem key={status} value={status}>{status}</MenuItem>)}</TextField><DateField size="small" label="Effective On" value={filters.onDate} onChange={(e) => setFilters({ ...filters, onDate: e.target.value })} /></Stack><TableContainer><Table><TableHead><TableRow><TableCell>Rule</TableCell><TableCell>Type</TableCell><TableCell>Jurisdiction</TableCell><TableCell>Effective Period</TableCell><TableCell>Scope</TableCell><TableCell>Status</TableCell><TableCell align="right">Actions</TableCell></TableRow></TableHead><TableBody>{rules.map((rule) => <TableRow key={rule.id}><TableCell><Typography fontWeight={600}>{rule.name}</Typography><Typography variant="caption">{rule.code} v{rule.version}</Typography></TableCell><TableCell>{rule.type}</TableCell><TableCell>{rule.country}{rule.state ? ` / ${rule.state}` : ''}</TableCell><TableCell>{formatDate(rule.effectiveFrom)} to {formatDate(rule.effectiveTo, 'Open ended')}</TableCell><TableCell>{rule.company?.name || 'All companies'}</TableCell><TableCell><Status status={rule.status} /></TableCell><TableCell align="right">{rule.status !== 'ACTIVE' && <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(rule)}>Edit</Button>}{rule.status === 'DRAFT' && <Button size="small" color="success" onClick={() => onStatus(rule, 'ACTIVE')}>Activate</Button>}{rule.status === 'ACTIVE' && <Button size="small" color="warning" onClick={() => onStatus(rule, 'ARCHIVED')}>Archive</Button>}</TableCell></TableRow>)}</TableBody></Table></TableContainer></Stack>;
 }
 
 function FilingCalendar({ obligations, onStatus, onAdd }) {

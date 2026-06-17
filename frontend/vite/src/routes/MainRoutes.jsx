@@ -19,6 +19,9 @@ const ManufacturingPage = Loadable(lazy(() => import('pages/manufacturing/Manufa
 const PayrollPage = Loadable(lazy(() => import('pages/payroll/PayrollPage')));
 const BankingPage = Loadable(lazy(() => import('pages/banking/BankingPage')));
 const ReportsPage = Loadable(lazy(() => import('pages/reports/ReportsPage')));
+const BudgetPage = Loadable(lazy(() => import('pages/budget/BudgetPage')));
+const GrandPage = Loadable(lazy(() => import('pages/grand/GrandPage')));
+const UtilizationPage = Loadable(lazy(() => import('pages/utilization/UtilizationPage')));
 const AuditPage = Loadable(lazy(() => import('pages/audit/AuditPage')));
 const MarketplacePage = Loadable(lazy(() => import('pages/marketplace/MarketplacePage')));
 const CompliancePage = Loadable(lazy(() => import('pages/compliance/CompliancePage')));
@@ -108,6 +111,18 @@ const MainRoutes = {
     {
       path: 'reports',
       element: <ReportsPage />
+    },
+    {
+      path: 'budget',
+      element: <BudgetPage />
+    },
+    {
+      path: 'grand',
+      element: <GrandPage />
+    },
+    {
+      path: 'utilization',
+      element: <UtilizationPage />
     },
     {
       path: 'audit',
