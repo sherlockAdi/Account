@@ -4,11 +4,14 @@ import { PrismaService } from '../database/prisma.service';
 import { IdentityService } from '../identity/identity.service';
 import { AccountingQueryDto } from './dto/accounting-query.dto';
 import { CreateAccountGroupDto } from './dto/create-account-group.dto';
+import { CreateBudgetGrantDto } from './dto/create-budget-grant.dto';
+import { CreateBudgetTypeDto } from './dto/create-budget-type.dto';
 import { CreateLedgerDto } from './dto/create-ledger.dto';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { CreateVoucherTypeDto } from './dto/create-voucher-type.dto';
 import { UpdateAccountGroupDto } from './dto/update-account-group.dto';
 import { UpdateLedgerDto } from './dto/update-ledger.dto';
+import { UpdateVoucherBudgetDto } from './dto/update-voucher-budget.dto';
 import { UpdateVoucherTypeDto } from './dto/update-voucher-type.dto';
 
 @Injectable()
@@ -51,6 +54,100 @@ export class AccountingService {
     return this.prisma.voucherType.findMany({
       where: { companyId: company.id, deletedAt: null },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async listBudgets(companyId?: string) {
+    const company = await this.resolveCompany(companyId);
+    await this.ensureDefaultBudget(company.id);
+
+    const budgets = await this.prisma.budgetType.findMany({
+      where: { companyId: company.id, deletedAt: null },
+      include: {
+        grants: {
+          where: { deletedAt: null },
+          orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+        },
+      },
+      orderBy: [{ isAnnual: 'desc' }, { name: 'asc' }],
+    });
+
+    const vouchers = await this.prisma.voucher.findMany({
+      where: {
+        companyId: company.id,
+        deletedAt: null,
+        budgetTypeId: { not: null },
+      },
+      include: {
+        lines: true,
+      },
+    });
+
+    return budgets.map((budget) => {
+      const budgetVouchers = vouchers.filter((voucher) => voucher.budgetTypeId === budget.id);
+      const utilizedAmount = budgetVouchers.reduce((sum, voucher) => {
+        return sum + voucher.lines.filter((line) => line.type === DebitCredit.DEBIT).reduce((lineSum, line) => lineSum + Number(line.amount), 0);
+      }, 0);
+      const grants = budget.grants.map((grant) => {
+        const grantVouchers = budgetVouchers.filter((voucher) => voucher.budgetGrantId === grant.id);
+        const grantUtilized = grantVouchers.reduce((sum, voucher) => {
+          return sum + voucher.lines.filter((line) => line.type === DebitCredit.DEBIT).reduce((lineSum, line) => lineSum + Number(line.amount), 0);
+        }, 0);
+        return {
+          ...grant,
+          amount: Number(grant.amount),
+          utilizedAmount: Number(grantUtilized.toFixed(2)),
+          availableAmount: Number((Number(grant.amount) - grantUtilized).toFixed(2)),
+        };
+      });
+
+      return {
+        ...budget,
+        totalAmount: Number(budget.totalAmount),
+        utilizedAmount: Number(utilizedAmount.toFixed(2)),
+        availableAmount: Number((Number(budget.totalAmount) - utilizedAmount).toFixed(2)),
+        grants,
+      };
+    });
+  }
+
+  async createBudget(companyId: string | undefined, dto: CreateBudgetTypeDto) {
+    const company = await this.resolveCompany(companyId);
+    const budget = await this.prisma.budgetType.create({
+      data: {
+        companyId: company.id,
+        name: dto.name,
+        code: dto.code,
+        category: dto.category ?? 'ANNUAL',
+        totalAmount: new Prisma.Decimal(dto.totalAmount ?? 0),
+        isAnnual: dto.isAnnual ?? false,
+        isActive: dto.isActive ?? true,
+      },
+    });
+
+    if (budget.isAnnual) {
+      await this.prisma.budgetType.updateMany({
+        where: { companyId: company.id, id: { not: budget.id }, isAnnual: true, deletedAt: null },
+        data: { isAnnual: false },
+      });
+    }
+
+    return budget;
+  }
+
+  async createBudgetGrant(companyId: string | undefined, budgetTypeId: string, dto: CreateBudgetGrantDto) {
+    const company = await this.resolveCompany(companyId);
+    const budget = await this.findBudgetType(budgetTypeId, company.id);
+    return this.prisma.budgetGrant.create({
+      data: {
+        companyId: company.id,
+        budgetTypeId: budget.id,
+        name: dto.name,
+        code: dto.code,
+        amount: new Prisma.Decimal(dto.amount ?? 0),
+        isDefault: dto.isDefault ?? false,
+        isActive: dto.isActive ?? true,
+      },
     });
   }
 
@@ -108,7 +205,12 @@ export class AccountingService {
     const company = await this.resolveCompany(query.companyId);
     return this.prisma.voucher.findMany({
       where: { companyId: company.id, deletedAt: null, voucherDate: this.dateFilter(query) },
-      include: { branch: true, lines: { include: { ledger: true } } },
+      include: {
+        branch: true,
+        budgetType: true,
+        budgetGrant: true,
+        lines: { include: { ledger: true } },
+      },
       orderBy: [{ voucherDate: 'desc' }, { voucherNo: 'desc' }],
     });
   }
@@ -116,6 +218,7 @@ export class AccountingService {
   async createVoucher(companyId: string | undefined, dto: CreateVoucherDto) {
     const company = await this.resolveCompany(companyId);
     const voucherIdentity = await this.resolveVoucherIdentity(company.id, dto);
+    const budgetSelection = await this.resolveBudgetSelection(company.id, dto);
     const debit = dto.lines.filter((line) => line.type === DebitCredit.DEBIT).reduce((sum, line) => sum + Number(line.amount), 0);
     const credit = dto.lines.filter((line) => line.type === DebitCredit.CREDIT).reduce((sum, line) => sum + Number(line.amount), 0);
 
@@ -135,6 +238,8 @@ export class AccountingService {
         data: {
           companyId: company.id,
           branchId: dto.branchId,
+          budgetTypeId: budgetSelection.budgetTypeId,
+          budgetGrantId: budgetSelection.budgetGrantId,
           voucherType: voucherIdentity.voucherType,
           voucherNo: voucherIdentity.voucherNo,
           voucherDate: new Date(dto.voucherDate),
@@ -148,7 +253,12 @@ export class AccountingService {
             })),
           },
         },
-        include: { branch: true, lines: { include: { ledger: true } } },
+        include: {
+          branch: true,
+          budgetType: true,
+          budgetGrant: true,
+          lines: { include: { ledger: true } },
+        },
       });
 
       if (voucherIdentity.voucherTypeId && voucherIdentity.usedAutoNumber) {
@@ -159,6 +269,28 @@ export class AccountingService {
       }
 
       return voucher;
+    });
+  }
+
+  async updateVoucherBudget(companyId: string | undefined, id: string, dto: UpdateVoucherBudgetDto) {
+    const company = await this.resolveCompany(companyId);
+    const voucher = await this.prisma.voucher.findFirst({ where: { id, companyId: company.id, deletedAt: null } });
+    if (!voucher) throw new NotFoundException('Voucher not found');
+
+    const budgetSelection = await this.resolveBudgetSelection(company.id, dto);
+
+    return this.prisma.voucher.update({
+      where: { id },
+      data: {
+        budgetTypeId: budgetSelection.budgetTypeId,
+        budgetGrantId: budgetSelection.budgetGrantId,
+      },
+      include: {
+        branch: true,
+        budgetType: true,
+        budgetGrant: true,
+        lines: { include: { ledger: true } },
+      },
     });
   }
 
@@ -253,6 +385,63 @@ export class AccountingService {
     const voucherType = await this.prisma.voucherType.findFirst({ where: { id, deletedAt: null } });
     if (!voucherType) throw new NotFoundException('Voucher type not found');
     return voucherType;
+  }
+
+  private async findBudgetType(id: string, companyId: string) {
+    const budgetType = await this.prisma.budgetType.findFirst({ where: { id, companyId, deletedAt: null } });
+    if (!budgetType) throw new NotFoundException('Budget not found');
+    return budgetType;
+  }
+
+  private async findBudgetGrant(id: string, companyId: string, budgetTypeId?: string) {
+    const budgetGrant = await this.prisma.budgetGrant.findFirst({
+      where: { id, companyId, deletedAt: null, ...(budgetTypeId ? { budgetTypeId } : {}) },
+    });
+    if (!budgetGrant) throw new NotFoundException('Budget grant not found');
+    return budgetGrant;
+  }
+
+  private async ensureDefaultBudget(companyId: string) {
+    const annualBudget = await this.prisma.budgetType.findFirst({
+      where: { companyId, deletedAt: null, isAnnual: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (annualBudget) {
+      return annualBudget;
+    }
+
+    return this.prisma.budgetType.create({
+      data: {
+        companyId,
+        name: 'Annual Budget',
+        code: 'ANNUAL',
+        category: 'ANNUAL',
+        totalAmount: new Prisma.Decimal(0),
+        isAnnual: true,
+        isActive: true,
+      },
+    });
+  }
+
+  private async resolveBudgetSelection(companyId: string, dto: { budgetTypeId?: string | null; budgetGrantId?: string | null }) {
+    let budgetType: { id: string; budgetTypeId?: string } | null = null;
+
+    if (dto.budgetTypeId) {
+      budgetType = await this.findBudgetType(dto.budgetTypeId, companyId);
+    } else if (dto.budgetGrantId) {
+      const grant = await this.findBudgetGrant(dto.budgetGrantId, companyId);
+      budgetType = await this.findBudgetType(grant.budgetTypeId, companyId);
+    } else {
+      budgetType = await this.ensureDefaultBudget(companyId);
+    }
+
+    if (!dto.budgetGrantId) {
+      return { budgetTypeId: budgetType.id, budgetGrantId: null };
+    }
+
+    const budgetGrant = await this.findBudgetGrant(dto.budgetGrantId, companyId, budgetType.id);
+    return { budgetTypeId: budgetType.id, budgetGrantId: budgetGrant.id };
   }
 
   private async resolveVoucherIdentity(companyId: string, dto: CreateVoucherDto) {

@@ -34,6 +34,16 @@ export class CreateVoucherDto {
   @IsString()
   branchId?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  budgetTypeId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  budgetGrantId?: string;
+
   @ApiPropertyOptional({ example: 'journal' })
   @IsOptional()
   @IsString()

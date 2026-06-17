@@ -244,6 +244,8 @@ model Company {
   ledgers               Ledger[]
   vouchers              Voucher[]
   voucherTypes          VoucherType[]
+  budgetTypes           BudgetType[]
+  budgetGrants          BudgetGrant[]
   voucherSeries         VoucherSeries[]
   units                 Unit[]
   itemGroups            ItemGroup[]
@@ -277,6 +279,48 @@ model Company {
   @@unique([tenantId, code])
   @@index([tenantId, isActive])
   @@map("companies")
+}
+
+model BudgetType {
+  id           String         @id @default(uuid())
+  companyId    String
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name         String
+  code         String
+  category     String         @default("ANNUAL")
+  totalAmount  Decimal        @default(0) @db.Decimal(18, 2)
+  isAnnual     Boolean        @default(false)
+  isActive     Boolean        @default(true)
+  grants       BudgetGrant[]
+  vouchers     Voucher[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+
+  @@unique([companyId, code])
+  @@index([companyId, isAnnual])
+  @@map("budget_types")
+}
+
+model BudgetGrant {
+  id           String         @id @default(uuid())
+  companyId    String
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  budgetTypeId String
+  budgetType   BudgetType     @relation(fields: [budgetTypeId], references: [id], onDelete: Cascade)
+  name         String
+  code         String
+  amount       Decimal        @default(0) @db.Decimal(18, 2)
+  isDefault    Boolean        @default(false)
+  isActive     Boolean        @default(true)
+  vouchers     Voucher[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+
+  @@unique([companyId, budgetTypeId, code])
+  @@index([companyId, budgetTypeId, isDefault])
+  @@map("budget_grants")
 }
 
 model TaxRate {
@@ -414,6 +458,10 @@ model Voucher {
   company       Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   branchId      String?
   branch        Branch?              @relation(fields: [branchId], references: [id])
+  budgetTypeId  String?
+  budgetType    BudgetType?          @relation(fields: [budgetTypeId], references: [id], onDelete: SetNull)
+  budgetGrantId String?
+  budgetGrant   BudgetGrant?         @relation(fields: [budgetGrantId], references: [id], onDelete: SetNull)
   voucherType   String
   voucherNo     String
   voucherDate   DateTime
@@ -430,6 +478,8 @@ model Voucher {
 
   @@unique([companyId, voucherType, voucherNo])
   @@index([companyId, voucherDate])
+  @@index([companyId, budgetTypeId])
+  @@index([companyId, budgetGrantId])
   @@map("vouchers")
 }
 
