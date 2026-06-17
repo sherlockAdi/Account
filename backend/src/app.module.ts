@@ -20,9 +20,10 @@ import { AuditModule } from './audit/audit.module';
 import { MarketplaceModule } from './marketplace/marketplace.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { ApprovalsModule } from './approvals/approvals.module';
+import { BudgetModule } from './budget/budget.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), DatabaseModule, AuthModule, IdentityModule, CompaniesModule, AccountingModule, InventoryModule, PurchaseModule, SalesModule, GstModule, ManufacturingModule, PayrollModule, BankingModule, ReportsModule, AuditModule, MarketplaceModule, ComplianceModule, ApprovalsModule, ModulesModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), DatabaseModule, AuthModule, IdentityModule, CompaniesModule, AccountingModule, InventoryModule, PurchaseModule, SalesModule, GstModule, ManufacturingModule, PayrollModule, BankingModule, ReportsModule, AuditModule, MarketplaceModule, ComplianceModule, ApprovalsModule, BudgetModule, ModulesModule],
   controllers: [AppController],
   providers: [AppService],
 })
