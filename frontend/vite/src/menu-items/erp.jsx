@@ -135,7 +135,7 @@ const erp = {
     },
     {
       id: 'grand',
-      title: 'Grand',
+      title: 'Grant',
       type: 'item',
       url: '/grand',
       icon: icons.FileProtectOutlined

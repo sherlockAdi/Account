@@ -39,6 +39,11 @@ enum VoucherStatus {
   CANCELLED
 }
 
+enum BudgetFlow {
+  RECEIPT
+  UTILIZATION
+}
+
 enum LedgerType {
   GENERAL
   CASH
@@ -472,6 +477,7 @@ model Voucher {
   budgetType    BudgetType?          @relation(fields: [budgetTypeId], references: [id], onDelete: SetNull)
   budgetGrantId String?
   budgetGrant   BudgetGrant?         @relation(fields: [budgetGrantId], references: [id], onDelete: SetNull)
+  budgetFlow    BudgetFlow           @default(UTILIZATION)
   voucherType   String
   voucherNo     String
   voucherDate   DateTime

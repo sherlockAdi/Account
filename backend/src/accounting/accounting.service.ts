@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DebitCredit, Prisma } from '@prisma/client';
+import { BudgetFlow, DebitCredit, Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { IdentityService } from '../identity/identity.service';
 import { AccountingQueryDto } from './dto/accounting-query.dto';
@@ -85,27 +85,29 @@ export class AccountingService {
 
     return budgets.map((budget) => {
       const budgetVouchers = vouchers.filter((voucher) => voucher.budgetTypeId === budget.id);
-      const utilizedAmount = budgetVouchers.reduce((sum, voucher) => {
-        return sum + voucher.lines.filter((line) => line.type === DebitCredit.DEBIT).reduce((lineSum, line) => lineSum + Number(line.amount), 0);
-      }, 0);
+      const receivedAmount = this.sumBudgetVouchers(budgetVouchers, BudgetFlow.RECEIPT);
+      const utilizedAmount = this.sumBudgetVouchers(budgetVouchers, BudgetFlow.UTILIZATION);
+      const availableBase = receivedAmount > 0 ? receivedAmount : Number(budget.totalAmount);
       const grants = budget.grants.map((grant) => {
         const grantVouchers = budgetVouchers.filter((voucher) => voucher.budgetGrantId === grant.id);
-        const grantUtilized = grantVouchers.reduce((sum, voucher) => {
-          return sum + voucher.lines.filter((line) => line.type === DebitCredit.DEBIT).reduce((lineSum, line) => lineSum + Number(line.amount), 0);
-        }, 0);
+        const grantReceived = this.sumBudgetVouchers(grantVouchers, BudgetFlow.RECEIPT);
+        const grantUtilized = this.sumBudgetVouchers(grantVouchers, BudgetFlow.UTILIZATION);
+        const grantAvailableBase = grantReceived > 0 ? grantReceived : Number(grant.amount);
         return {
           ...grant,
           amount: Number(grant.amount),
+          receivedAmount: Number(grantReceived.toFixed(2)),
           utilizedAmount: Number(grantUtilized.toFixed(2)),
-          availableAmount: Number((Number(grant.amount) - grantUtilized).toFixed(2)),
+          availableAmount: Number((grantAvailableBase - grantUtilized).toFixed(2)),
         };
       });
 
       return {
         ...budget,
         totalAmount: Number(budget.totalAmount),
+        receivedAmount: Number(receivedAmount.toFixed(2)),
         utilizedAmount: Number(utilizedAmount.toFixed(2)),
-        availableAmount: Number((Number(budget.totalAmount) - utilizedAmount).toFixed(2)),
+        availableAmount: Number((availableBase - utilizedAmount).toFixed(2)),
         grants,
       };
     });
@@ -132,13 +134,42 @@ export class AccountingService {
       });
     }
 
-    return budget;
+    if (dto.initialGrant?.name && dto.initialGrant?.code) {
+      const grant = await this.prisma.budgetGrant.create({
+        data: {
+          companyId: company.id,
+          budgetTypeId: budget.id,
+          name: dto.initialGrant.name,
+          code: dto.initialGrant.code,
+          amount: new Prisma.Decimal(dto.initialGrant.amount ?? 0),
+          isDefault: dto.initialGrant.isDefault ?? true,
+          isActive: dto.initialGrant.isActive ?? true,
+        },
+      });
+
+      if (grant.isDefault) {
+        await this.prisma.budgetGrant.updateMany({
+          where: { companyId: company.id, budgetTypeId: budget.id, id: { not: grant.id }, deletedAt: null },
+          data: { isDefault: false },
+        });
+      }
+    }
+
+    return this.prisma.budgetType.findFirstOrThrow({
+      where: { id: budget.id },
+      include: {
+        grants: {
+          where: { deletedAt: null },
+          orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+        },
+      },
+    });
   }
 
   async createBudgetGrant(companyId: string | undefined, budgetTypeId: string, dto: CreateBudgetGrantDto) {
     const company = await this.resolveCompany(companyId);
     const budget = await this.findBudgetType(budgetTypeId, company.id);
-    return this.prisma.budgetGrant.create({
+    const grant = await this.prisma.budgetGrant.create({
       data: {
         companyId: company.id,
         budgetTypeId: budget.id,
@@ -149,6 +180,13 @@ export class AccountingService {
         isActive: dto.isActive ?? true,
       },
     });
+    if (grant.isDefault) {
+      await this.prisma.budgetGrant.updateMany({
+        where: { companyId: company.id, budgetTypeId: budget.id, id: { not: grant.id }, deletedAt: null },
+        data: { isDefault: false },
+      });
+    }
+    return grant;
   }
 
   async createVoucherType(companyId: string | undefined, dto: CreateVoucherTypeDto) {
@@ -240,6 +278,7 @@ export class AccountingService {
           branchId: dto.branchId,
           budgetTypeId: budgetSelection.budgetTypeId,
           budgetGrantId: budgetSelection.budgetGrantId,
+          budgetFlow: budgetSelection.budgetFlow,
           voucherType: voucherIdentity.voucherType,
           voucherNo: voucherIdentity.voucherNo,
           voucherDate: new Date(dto.voucherDate),
@@ -284,6 +323,7 @@ export class AccountingService {
       data: {
         budgetTypeId: budgetSelection.budgetTypeId,
         budgetGrantId: budgetSelection.budgetGrantId,
+        budgetFlow: budgetSelection.budgetFlow,
       },
       include: {
         branch: true,
@@ -424,7 +464,7 @@ export class AccountingService {
     });
   }
 
-  private async resolveBudgetSelection(companyId: string, dto: { budgetTypeId?: string | null; budgetGrantId?: string | null }) {
+  private async resolveBudgetSelection(companyId: string, dto: { budgetTypeId?: string | null; budgetGrantId?: string | null; budgetFlow?: BudgetFlow | null }) {
     let budgetType: { id: string; budgetTypeId?: string } | null = null;
 
     if (dto.budgetTypeId) {
@@ -437,11 +477,27 @@ export class AccountingService {
     }
 
     if (!dto.budgetGrantId) {
-      return { budgetTypeId: budgetType.id, budgetGrantId: null };
+      return {
+        budgetTypeId: budgetType.id,
+        budgetGrantId: null,
+        budgetFlow: dto.budgetFlow ?? BudgetFlow.UTILIZATION,
+      };
     }
 
     const budgetGrant = await this.findBudgetGrant(dto.budgetGrantId, companyId, budgetType.id);
-    return { budgetTypeId: budgetType.id, budgetGrantId: budgetGrant.id };
+    return {
+      budgetTypeId: budgetType.id,
+      budgetGrantId: budgetGrant.id,
+      budgetFlow: dto.budgetFlow ?? BudgetFlow.UTILIZATION,
+    };
+  }
+
+  private sumBudgetVouchers(vouchers: Array<{ budgetFlow: BudgetFlow; lines: Array<{ type: DebitCredit; amount: Prisma.Decimal }> }>, flow: BudgetFlow) {
+    return vouchers
+      .filter((voucher) => voucher.budgetFlow === flow)
+      .reduce((sum, voucher) => {
+        return sum + voucher.lines.filter((line) => line.type === DebitCredit.DEBIT).reduce((lineSum, line) => lineSum + Number(line.amount), 0);
+      }, 0);
   }
 
   private async resolveVoucherIdentity(companyId: string, dto: CreateVoucherDto) {

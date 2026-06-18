@@ -1,5 +1,6 @@
+import { BudgetFlow } from '@prisma/client';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
 
 export class UpdateVoucherBudgetDto {
   @ApiPropertyOptional()
@@ -11,4 +12,9 @@ export class UpdateVoucherBudgetDto {
   @IsOptional()
   @IsString()
   budgetGrantId?: string | null;
+
+  @ApiPropertyOptional({ enum: BudgetFlow, example: BudgetFlow.UTILIZATION })
+  @IsOptional()
+  @IsEnum(BudgetFlow)
+  budgetFlow?: BudgetFlow | null;
 }

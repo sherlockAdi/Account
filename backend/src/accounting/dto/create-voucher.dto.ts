@@ -1,4 +1,4 @@
-import { DebitCredit } from '@prisma/client';
+import { BudgetFlow, DebitCredit } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { ArrayMinSize, IsArray, IsDateString, IsEnum, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
@@ -43,6 +43,11 @@ export class CreateVoucherDto {
   @IsOptional()
   @IsString()
   budgetGrantId?: string;
+
+  @ApiPropertyOptional({ enum: BudgetFlow, example: BudgetFlow.UTILIZATION })
+  @IsOptional()
+  @IsEnum(BudgetFlow)
+  budgetFlow?: BudgetFlow;
 
   @ApiPropertyOptional({ example: 'journal' })
   @IsOptional()
