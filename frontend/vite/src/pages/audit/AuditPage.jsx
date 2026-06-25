@@ -14,12 +14,6 @@ import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -31,6 +25,7 @@ import StopOutlined from '@ant-design/icons/StopOutlined';
 
 import { useAuth } from 'contexts/AuthContext';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 import { formatDate, todayIso } from 'utils/dateFormat';
 
@@ -64,25 +59,22 @@ export default function AuditPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadedTabs, setLoadedTabs] = useState({});
 
   const modules = useMemo(() => [...new Set(logs.map((log) => log.module))].sort(), [logs]);
   const editLogs = useMemo(() => logs.filter((log) => ['UPDATE', 'DELETE'].includes(log.action)), [logs]);
 
-  async function loadData() {
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
     try {
       setLoading(true);
       setError('');
       const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value)).toString();
-      const [dashboardData, logData, voucherData, securityData] = await Promise.all([
-        api('/audit/dashboard', token),
-        api(`/audit/logs?${query}`, token),
-        api('/audit/vouchers', token),
-        api('/audit/security', token)
-      ]);
-      setDashboard(dashboardData);
-      setLogs(logData);
-      setVouchers(voucherData);
-      setSecurity(securityData);
+      if (tabIndex === 0) setDashboard(await api('/audit/dashboard', token));
+      if (tabIndex === 1 || tabIndex === 2) setLogs(await api(`/audit/logs?${query}`, token));
+      if (tabIndex === 3) setVouchers(await api('/audit/vouchers', token));
+      if (tabIndex === 4) setSecurity(await api('/audit/security', token));
+      setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -90,7 +82,7 @@ export default function AuditPage() {
     }
   }
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadTabData(tab); }, [tab]);
 
   async function submitVerification() {
     try {
@@ -101,7 +93,7 @@ export default function AuditPage() {
       });
       setVerifyVoucher(null);
       setMessage(`Voucher marked ${verifyForm.status.toLowerCase()}`);
-      await loadData();
+      await loadTabData(3, true);
     } catch (verifyError) {
       setError(verifyError.message);
     }
@@ -118,7 +110,7 @@ export default function AuditPage() {
       <Grid size={12}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { md: 'center' } }}>
           <Box><Typography variant="h3">Audit & Security Control</Typography><Typography color="text.secondary">Immutable activity history, edit review, voucher verification and security monitoring.</Typography></Box>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}><Chip icon={<SafetyCertificateOutlined />} color="primary" label={`Reviewer: ${user?.fullName || user?.email}`} /><Button variant="contained" onClick={loadData} disabled={loading}>{loading ? 'Refreshing...' : 'Refresh'}</Button></Stack>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}><Chip icon={<SafetyCertificateOutlined />} color="primary" label={`Reviewer: ${user?.fullName || user?.email}`} /><Button variant="contained" onClick={() => loadTabData(tab, true)} disabled={loading}>{loading ? 'Refreshing...' : 'Refresh'}</Button></Stack>
         </Stack>
       </Grid>
       <Grid size={12}>
@@ -127,7 +119,7 @@ export default function AuditPage() {
             <Tab label="Dashboard" /><Tab label="Audit Log" /><Tab label="Edit Log" /><Tab label="Voucher Verification" /><Tab label="Security" />
           </Tabs>
           {tab === 0 && <Dashboard dashboard={dashboard} onInspect={setSelectedLog} />}
-          {tab === 1 && <AuditLog logs={logs} filters={filters} setFilters={setFilters} modules={modules} onApply={loadData} onInspect={setSelectedLog} />}
+          {tab === 1 && <AuditLog logs={logs} filters={filters} setFilters={setFilters} modules={modules} onApply={() => loadTabData(1, true)} onInspect={setSelectedLog} />}
           {tab === 2 && <EditLog logs={editLogs} onInspect={setSelectedLog} />}
           {tab === 3 && <VoucherVerification vouchers={vouchers} onVerify={openVerification} />}
           {tab === 4 && <Security security={security} />}
@@ -175,21 +167,84 @@ function EditLog({ logs, onInspect }) {
 }
 
 function LogTable({ logs, onInspect, compact = false, showEntity = false }) {
-  return <TableContainer><Table size="small"><TableHead><TableRow><TableCell>Time</TableCell><TableCell>User</TableCell><TableCell>Event</TableCell>{showEntity && <TableCell>Entity</TableCell>}<TableCell>Description</TableCell><TableCell>Outcome</TableCell><TableCell align="right">Details</TableCell></TableRow></TableHead><TableBody>{logs.slice(0, compact ? 8 : 500).map((log) => <TableRow hover key={log.id}><TableCell>{new Date(log.createdAt).toLocaleString()}</TableCell><TableCell>{log.user?.fullName || log.user?.email || 'System'}</TableCell><TableCell>{log.module}.{log.action}</TableCell>{showEntity && <TableCell>{log.entityType || '-'}<br /><Typography variant="caption">{log.entityId || ''}</Typography></TableCell>}<TableCell>{log.description}</TableCell><TableCell><OutcomeChip outcome={log.outcome} /></TableCell><TableCell align="right"><Button size="small" startIcon={<EyeOutlined />} onClick={() => onInspect(log)}>View</Button></TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  const rows = logs.slice(0, compact ? 8 : 500).map((log) => ({
+    ...log,
+    timeText: new Date(log.createdAt).toLocaleString(),
+    userText: log.user?.fullName || log.user?.email || 'System',
+    eventText: `${log.module}.${log.action}`,
+    entityText: `${log.entityType || '-'} ${log.entityId || ''}`.trim()
+  }));
+  const columns = [
+    { field: 'timeText', headerName: 'Time', width: 190 },
+    { field: 'userText', headerName: 'User', flex: 1, minWidth: 150 },
+    { field: 'eventText', headerName: 'Event', flex: 1, minWidth: 150 },
+    ...(showEntity ? [{ field: 'entityText', headerName: 'Entity', flex: 1, minWidth: 170 }] : []),
+    { field: 'description', headerName: 'Description', flex: 1.4, minWidth: 240 },
+    { field: 'outcome', headerName: 'Outcome', width: 130, renderCell: ({ value }) => <OutcomeChip outcome={value} /> },
+    { field: 'details', headerName: 'Details', width: 120, sortable: false, filterable: false, renderCell: ({ row }) => <Button size="small" startIcon={<EyeOutlined />} onClick={() => onInspect(row)}>View</Button> }
+  ];
+
+  return (
+    <CommonDataGrid
+      title={showEntity ? 'Edit Log' : compact ? 'Recent Activity' : 'Audit Log'}
+      rows={rows}
+      columns={columns}
+      searchPlaceholder="Search audit event, user, path, or description"
+      dateField="createdAt"
+      selectFilters={[
+        { field: 'module', label: 'Module' },
+        { field: 'action', label: 'Action' },
+        { field: 'outcome', label: 'Outcome' }
+      ]}
+      fileName={showEntity ? 'edit-log' : 'audit-log'}
+      height={compact ? 380 : 520}
+      pageSize={25}
+    />
+  );
 }
 
 function VoucherVerification({ vouchers, onVerify }) {
-  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Voucher</TableCell><TableCell>Particulars</TableCell><TableCell align="right">Debit</TableCell><TableCell align="right">Credit</TableCell><TableCell>Verification</TableCell><TableCell align="right">Action</TableCell></TableRow></TableHead><TableBody>{vouchers.map((voucher) => {
+  const rows = vouchers.map((voucher) => {
     const debit = voucher.lines.filter((line) => line.type === 'DEBIT').reduce((sum, line) => sum + Number(line.amount), 0);
     const credit = voucher.lines.filter((line) => line.type === 'CREDIT').reduce((sum, line) => sum + Number(line.amount), 0);
     const status = voucher.verification?.status || 'UNVERIFIED';
-    return <TableRow key={voucher.id}><TableCell>{formatDate(voucher.voucherDate)}</TableCell><TableCell>{voucher.voucherNo}<br /><Typography variant="caption">{voucher.voucherType}</Typography></TableCell><TableCell>{voucher.lines.map((line) => line.ledger.name).join(', ')}</TableCell><TableCell align="right">{money(debit)}</TableCell><TableCell align="right">{money(credit)}</TableCell><TableCell><VerificationChip status={status} />{voucher.verification?.verifiedBy && <Typography variant="caption" display="block">{voucher.verification.verifiedBy.fullName}</Typography>}</TableCell><TableCell align="right"><Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}><Button size="small" color="success" startIcon={<CheckCircleOutlined />} onClick={() => onVerify(voucher, 'VERIFIED')}>Verify</Button><Button size="small" color="error" startIcon={<StopOutlined />} onClick={() => onVerify(voucher, 'REJECTED')}>Reject</Button></Stack></TableCell></TableRow>;
-  })}</TableBody></Table></TableContainer>;
+    return {
+      ...voucher,
+      dateText: formatDate(voucher.voucherDate),
+      voucherText: `${voucher.voucherNo} | ${voucher.voucherType}`,
+      particularsText: voucher.lines.map((line) => line.ledger.name).join(', '),
+      debitText: money(debit),
+      creditText: money(credit),
+      verificationStatus: status,
+      verifiedByText: voucher.verification?.verifiedBy?.fullName || '-'
+    };
+  });
+
+  return (
+    <CommonDataGrid
+      title="Voucher Verification"
+      rows={rows}
+      columns={[
+        { field: 'dateText', headerName: 'Date', width: 130 },
+        { field: 'voucherText', headerName: 'Voucher', flex: 1, minWidth: 170 },
+        { field: 'particularsText', headerName: 'Particulars', flex: 1.5, minWidth: 240 },
+        { field: 'debitText', headerName: 'Debit', width: 140, align: 'right', headerAlign: 'right' },
+        { field: 'creditText', headerName: 'Credit', width: 140, align: 'right', headerAlign: 'right' },
+        { field: 'verificationStatus', headerName: 'Verification', width: 150, renderCell: ({ value }) => <VerificationChip status={value} /> },
+        { field: 'actions', headerName: 'Action', width: 190, sortable: false, filterable: false, renderCell: ({ row }) => <Stack direction="row" spacing={0.5}><Button size="small" color="success" startIcon={<CheckCircleOutlined />} onClick={() => onVerify(row, 'VERIFIED')}>Verify</Button><Button size="small" color="error" startIcon={<StopOutlined />} onClick={() => onVerify(row, 'REJECTED')}>Reject</Button></Stack> }
+      ]}
+      searchPlaceholder="Search voucher, type, ledger, or reviewer"
+      dateField="voucherDate"
+      selectFilters={[{ field: 'voucherType', label: 'Voucher Type' }, { field: 'verificationStatus', label: 'Verification' }, { field: 'verifiedByText', label: 'Verified By' }]}
+      fileName="voucher-verification"
+    />
+  );
 }
 
 function Security({ security }) {
   const cards = [['Successful Logins', security.loginSuccesses || 0], ['Failed Logins', security.loginFailures || 0], ['Failed Operations', security.failedOperations || 0], ['Unique IPs', security.uniqueIpCount || 0]];
-  return <Stack spacing={2.5} sx={{ p: 2.5 }}><Alert severity={security.loginFailures ? 'warning' : 'success'}>Security activity for the last {security.periodDays || 7} days. Passwords and tokens are always redacted.</Alert><Grid container spacing={2}>{cards.map(([label, value]) => <Grid key={label} size={{ xs: 12, sm: 6, md: 3 }}><Card variant="outlined"><CardContent><Typography color="text.secondary">{label}</Typography><Typography variant="h3">{value}</Typography></CardContent></Card></Grid>)}</Grid><Table size="small"><TableHead><TableRow><TableCell>Time</TableCell><TableCell>Event</TableCell><TableCell>IP</TableCell><TableCell>User Agent</TableCell><TableCell>Outcome</TableCell></TableRow></TableHead><TableBody>{(security.recentSecurityEvents || []).map((log) => <TableRow key={log.id}><TableCell>{new Date(log.createdAt).toLocaleString()}</TableCell><TableCell>{log.description}</TableCell><TableCell>{log.ipAddress || '-'}</TableCell><TableCell>{log.userAgent || '-'}</TableCell><TableCell><OutcomeChip outcome={log.outcome} /></TableCell></TableRow>)}</TableBody></Table></Stack>;
+  const rows = (security.recentSecurityEvents || []).map((log) => ({ ...log, timeText: new Date(log.createdAt).toLocaleString(), ipText: log.ipAddress || '-', userAgentText: log.userAgent || '-' }));
+  return <Stack spacing={2.5} sx={{ p: 2.5 }}><Alert severity={security.loginFailures ? 'warning' : 'success'}>Security activity for the last {security.periodDays || 7} days. Passwords and tokens are always redacted.</Alert><Grid container spacing={2}>{cards.map(([label, value]) => <Grid key={label} size={{ xs: 12, sm: 6, md: 3 }}><Card variant="outlined"><CardContent><Typography color="text.secondary">{label}</Typography><Typography variant="h3">{value}</Typography></CardContent></Card></Grid>)}</Grid><CommonDataGrid title="Security Events" rows={rows} columns={[{ field: 'timeText', headerName: 'Time', width: 190 }, { field: 'description', headerName: 'Event', flex: 1.2, minWidth: 220 }, { field: 'ipText', headerName: 'IP', width: 150 }, { field: 'userAgentText', headerName: 'User Agent', flex: 1, minWidth: 220 }, { field: 'outcome', headerName: 'Outcome', width: 130, renderCell: ({ value }) => <OutcomeChip outcome={value} /> }]} searchPlaceholder="Search security event, IP, or user agent" dateField="createdAt" selectFilters={[{ field: 'outcome', label: 'Outcome' }, { field: 'ipText', label: 'IP' }]} fileName="security-events" /></Stack>;
 }
 
 function Detail({ label, value, wide = false }) {

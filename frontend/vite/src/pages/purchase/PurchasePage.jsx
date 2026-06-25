@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -11,17 +11,12 @@ import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 import { formatDate, todayIso } from 'utils/dateFormat';
 
@@ -52,6 +47,8 @@ export default function PurchasePage() {
   const [vendorOpen, setVendorOpen] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [referenceLoaded, setReferenceLoaded] = useState(false);
   const [vendorForm, setVendorForm] = useState({ name: '', code: '', gstin: '', phone: '', email: '', state: '' });
   const [invoiceForm, setInvoiceForm] = useState({
     vendorId: '',
@@ -74,26 +71,41 @@ export default function PurchasePage() {
 
   const warehouses = companies.flatMap((company) => company.branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch, company }))));
 
-  async function loadData() {
-    const [vendorData, invoiceData, returnData, itemData, companyData, outstandingData] = await Promise.all([
-      api('/purchase/vendors'),
-      api('/purchase/invoices'),
-      api('/purchase/returns'),
-      api('/inventory/items'),
-      api('/companies'),
-      api('/purchase/reports/vendor-outstanding')
+  async function ensureReferenceData() {
+    if (referenceLoaded && vendors.length && items.length && companies.length) return { vendorData: vendors, itemData: items, companyData: companies };
+    const [vendorData, itemData, companyData] = await Promise.all([
+      vendors.length ? Promise.resolve(vendors) : api('/purchase/vendors'),
+      items.length ? Promise.resolve(items) : api('/inventory/items'),
+      companies.length ? Promise.resolve(companies) : api('/companies')
     ]);
     setVendors(vendorData);
-    setInvoices(invoiceData);
-    setReturns(returnData);
     setItems(itemData);
     setCompanies(companyData);
-    setOutstanding(outstandingData);
+    setReferenceLoaded(true);
+    return { vendorData, itemData, companyData };
   }
 
-  useEffect(() => {
-    loadData().catch((loadError) => setError(loadError.message));
-  }, []);
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
+    try {
+      setError('');
+      if (tabIndex === 0) setVendors(await api('/purchase/vendors'));
+      if (tabIndex === 1 || tabIndex === 3) {
+        await ensureReferenceData();
+        setInvoices(await api('/purchase/invoices'));
+      }
+      if (tabIndex === 2) {
+        await ensureReferenceData();
+        setReturns(await api('/purchase/returns'));
+      }
+      if (tabIndex === 4) setOutstanding(await api('/purchase/reports/vendor-outstanding'));
+      setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
+    } catch (loadError) {
+      setError(loadError.message);
+    }
+  }
+
+  useEffect(() => { loadTabData(tab); }, [tab]);
 
   async function save(action, success, close) {
     try {
@@ -102,10 +114,24 @@ export default function PurchasePage() {
       await action();
       close();
       setMessage(success);
-      await loadData();
+      await loadTabData(tab, true);
     } catch (saveError) {
       setError(saveError.message);
     }
+  }
+
+  async function openInvoiceDialog() {
+    const { vendorData, itemData, companyData } = await ensureReferenceData();
+    const freshWarehouses = companyData.flatMap((company) => company.branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch, company }))));
+    setInvoiceForm({ vendorId: vendorData[0]?.id || '', warehouseId: freshWarehouses[0]?.id || '', invoiceNo: `PI-${Date.now().toString().slice(-5)}`, invoiceDate: todayIso(), supplierInvoiceNo: '', narration: '', lines: [{ itemId: itemData[0]?.id || '', quantity: 1, rate: Number(itemData[0]?.standardRate || 0) }] });
+    setInvoiceOpen(true);
+  }
+
+  async function openReturnDialog() {
+    const { vendorData, itemData, companyData } = await ensureReferenceData();
+    const freshWarehouses = companyData.flatMap((company) => company.branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch, company }))));
+    setReturnForm({ vendorId: vendorData[0]?.id || '', warehouseId: freshWarehouses[0]?.id || '', returnNo: `PR-${Date.now().toString().slice(-5)}`, returnDate: todayIso(), supplierReturnNo: '', narration: '', lines: [{ itemId: itemData[0]?.id || '', quantity: 1, rate: Number(itemData[0]?.standardRate || 0) }] });
+    setReturnOpen(true);
   }
 
   function updateLine(index, key, value) {
@@ -115,6 +141,100 @@ export default function PurchasePage() {
   function updateReturnLine(index, key, value) {
     setReturnForm((current) => ({ ...current, lines: current.lines.map((line, i) => (i === index ? { ...line, [key]: value } : line)) }));
   }
+
+  const statusOptions = [{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }];
+  const vendorOptions = useMemo(() => vendors.map((vendor) => ({ value: vendor.name, label: vendor.name })), [vendors]);
+  const warehouseOptions = useMemo(
+    () => Array.from(new Set(warehouses.map((warehouse) => warehouse.name))).map((name) => ({ value: name, label: name })),
+    [warehouses]
+  );
+
+  const vendorRows = useMemo(
+    () =>
+      vendors.map((vendor) => ({
+        ...vendor,
+        vendor: `${vendor.name} ${vendor.code}`,
+        ledgerName: vendor.ledger?.name || '-',
+        statusText: vendor.isActive ? 'Active' : 'Inactive'
+      })),
+    [vendors]
+  );
+
+  const invoiceRows = useMemo(
+    () =>
+      invoices.map((invoice) => ({
+        ...invoice,
+        date: invoice.invoiceDate,
+        vendorName: invoice.vendor?.name || '-',
+        warehouseName: invoice.warehouse?.name || '-',
+        itemText: invoice.lines?.map((line) => `${line.item?.name || '-'} ${Number(line.quantity).toFixed(3)} ${line.item?.unit?.code || ''}`).join(', ') || '-',
+        total: Number(invoice.totalAmount || 0)
+      })),
+    [invoices]
+  );
+
+  const returnRows = useMemo(
+    () =>
+      returns.map((purchaseReturn) => ({
+        ...purchaseReturn,
+        date: purchaseReturn.returnDate,
+        vendorName: purchaseReturn.vendor?.name || '-',
+        warehouseName: purchaseReturn.warehouse?.name || '-',
+        itemText: purchaseReturn.lines?.map((line) => `${line.item?.name || '-'} ${Number(line.quantity).toFixed(3)} ${line.item?.unit?.code || ''}`).join(', ') || '-',
+        total: Number(purchaseReturn.totalAmount || 0)
+      })),
+    [returns]
+  );
+
+  const outstandingRows = useMemo(
+    () => outstanding.map((row) => ({ ...row, id: row.vendorId, total: Number(row.totalPayable || 0) })),
+    [outstanding]
+  );
+
+  const vendorColumns = useMemo(
+    () => [
+      { field: 'vendor', headerName: 'Vendor', flex: 1, minWidth: 210 },
+      { field: 'ledgerName', headerName: 'Ledger', flex: 1, minWidth: 190 },
+      { field: 'gstin', headerName: 'GSTIN', flex: 0.8, minWidth: 150, valueGetter: (value) => value || '-' },
+      { field: 'phone', headerName: 'Phone', flex: 0.8, minWidth: 140, valueGetter: (value) => value || '-' },
+      { field: 'statusText', headerName: 'Status', flex: 0.6, minWidth: 120 }
+    ],
+    []
+  );
+
+  const invoiceColumns = useMemo(
+    () => [
+      { field: 'date', headerName: 'Date', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatDate(value) },
+      { field: 'invoiceNo', headerName: 'Invoice', flex: 0.8, minWidth: 150 },
+      { field: 'supplierInvoiceNo', headerName: 'Supplier Invoice', flex: 0.8, minWidth: 160, valueGetter: (value) => value || '-' },
+      { field: 'vendorName', headerName: 'Vendor', flex: 1, minWidth: 190 },
+      { field: 'warehouseName', headerName: 'Warehouse', flex: 1, minWidth: 180 },
+      { field: 'itemText', headerName: 'Items', flex: 1.7, minWidth: 320 },
+      { field: 'total', headerName: 'Total', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => Number(value || 0).toFixed(2) }
+    ],
+    []
+  );
+
+  const returnColumns = useMemo(
+    () => [
+      { field: 'date', headerName: 'Date', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatDate(value) },
+      { field: 'returnNo', headerName: 'Return', flex: 0.8, minWidth: 150 },
+      { field: 'supplierReturnNo', headerName: 'Supplier Return', flex: 0.8, minWidth: 160, valueGetter: (value) => value || '-' },
+      { field: 'vendorName', headerName: 'Vendor', flex: 1, minWidth: 190 },
+      { field: 'warehouseName', headerName: 'Warehouse', flex: 1, minWidth: 180 },
+      { field: 'itemText', headerName: 'Items', flex: 1.7, minWidth: 320 },
+      { field: 'total', headerName: 'Total', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => Number(value || 0).toFixed(2) }
+    ],
+    []
+  );
+
+  const outstandingColumns = useMemo(
+    () => [
+      { field: 'vendorName', headerName: 'Vendor', flex: 1, minWidth: 220 },
+      { field: 'total', headerName: 'Total Payable', type: 'number', flex: 0.8, minWidth: 170, valueFormatter: (value) => Number(value || 0).toFixed(2) }
+    ],
+    []
+  );
 
   return (
     <Grid container spacing={2.75}>
@@ -128,11 +248,11 @@ export default function PurchasePage() {
             <Tab label="Purchase Register" />
             <Tab label="Vendor Outstanding" />
           </Tabs>
-          {tab === 0 && <GridPanel label="Create Vendor" onCreate={() => setVendorOpen(true)}><Table size="small"><TableHead><TableRow><TableCell>Vendor</TableCell><TableCell>Ledger</TableCell><TableCell>GSTIN</TableCell><TableCell>Phone</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{vendors.map((vendor) => <TableRow key={vendor.id}><TableCell>{vendor.name}<br />{vendor.code}</TableCell><TableCell>{vendor.ledger.name}</TableCell><TableCell>{vendor.gstin || '-'}</TableCell><TableCell>{vendor.phone || '-'}</TableCell><TableCell>{vendor.isActive ? 'Active' : 'Inactive'}</TableCell></TableRow>)}</TableBody></Table></GridPanel>}
-          {tab === 1 && <GridPanel label="Create Purchase Invoice" onCreate={() => { setInvoiceForm({ vendorId: vendors[0]?.id || '', warehouseId: warehouses[0]?.id || '', invoiceNo: `PI-${Date.now().toString().slice(-5)}`, invoiceDate: todayIso(), supplierInvoiceNo: '', narration: '', lines: [{ itemId: items[0]?.id || '', quantity: 1, rate: Number(items[0]?.standardRate || 0) }] }); setInvoiceOpen(true); }}><InvoiceTable invoices={invoices} /></GridPanel>}
-          {tab === 2 && <GridPanel label="Create Purchase Return" onCreate={() => { setReturnForm({ vendorId: vendors[0]?.id || '', warehouseId: warehouses[0]?.id || '', returnNo: `PR-${Date.now().toString().slice(-5)}`, returnDate: todayIso(), supplierReturnNo: '', narration: '', lines: [{ itemId: items[0]?.id || '', quantity: 1, rate: Number(items[0]?.standardRate || 0) }] }); setReturnOpen(true); }}><ReturnTable returns={returns} /></GridPanel>}
-          {tab === 3 && <Box sx={{ p: 2.5 }}><InvoiceTable invoices={invoices} /></Box>}
-          {tab === 4 && <Box sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Vendor</TableCell><TableCell align="right">Total Payable</TableCell></TableRow></TableHead><TableBody>{outstanding.map((row) => <TableRow key={row.vendorId}><TableCell>{row.vendorName}</TableCell><TableCell align="right">{row.totalPayable.toFixed(2)}</TableCell></TableRow>)}</TableBody></Table></Box>}
+          {tab === 0 && <GridPanel label="Create Vendor" onCreate={() => setVendorOpen(true)}><CommonDataGrid title="Vendors" rows={vendorRows} columns={vendorColumns} fileName="purchase-vendors" searchPlaceholder="Search vendors" selectFilters={[{ field: 'statusText', label: 'Status', options: statusOptions }]} /></GridPanel>}
+          {tab === 1 && <GridPanel label="Create Purchase Invoice" onCreate={openInvoiceDialog}><CommonDataGrid title="Purchase Invoices" rows={invoiceRows} columns={invoiceColumns} fileName="purchase-invoices" searchPlaceholder="Search invoices" dateField="date" selectFilters={[{ field: 'vendorName', label: 'Vendor', options: vendorOptions }, { field: 'warehouseName', label: 'Warehouse', options: warehouseOptions }]} /></GridPanel>}
+          {tab === 2 && <GridPanel label="Create Purchase Return" onCreate={openReturnDialog}><CommonDataGrid title="Purchase Returns" rows={returnRows} columns={returnColumns} fileName="purchase-returns" searchPlaceholder="Search returns" dateField="date" selectFilters={[{ field: 'vendorName', label: 'Vendor', options: vendorOptions }, { field: 'warehouseName', label: 'Warehouse', options: warehouseOptions }]} /></GridPanel>}
+          {tab === 3 && <Box sx={{ p: 2.5 }}><CommonDataGrid title="Purchase Register" rows={invoiceRows} columns={invoiceColumns} fileName="purchase-register" searchPlaceholder="Search register" dateField="date" selectFilters={[{ field: 'vendorName', label: 'Vendor', options: vendorOptions }, { field: 'warehouseName', label: 'Warehouse', options: warehouseOptions }]} /></Box>}
+          {tab === 4 && <Box sx={{ p: 2.5 }}><CommonDataGrid title="Vendor Outstanding" rows={outstandingRows} columns={outstandingColumns} fileName="vendor-outstanding" searchPlaceholder="Search vendors" /></Box>}
         </Box>
       </Grid>
 
@@ -173,15 +293,7 @@ export default function PurchasePage() {
 }
 
 function GridPanel({ label, onCreate, children }) {
-  return <Stack spacing={2.5} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'flex-end' }}><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>{label}</Button></Stack><TableContainer>{children}</TableContainer></Stack>;
-}
-
-function InvoiceTable({ invoices }) {
-  return <Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Invoice</TableCell><TableCell>Vendor</TableCell><TableCell>Warehouse</TableCell><TableCell>Items</TableCell><TableCell align="right">Total</TableCell></TableRow></TableHead><TableBody>{invoices.map((invoice) => <TableRow key={invoice.id}><TableCell>{formatDate(invoice.invoiceDate)}</TableCell><TableCell>{invoice.invoiceNo}</TableCell><TableCell>{invoice.vendor.name}</TableCell><TableCell>{invoice.warehouse.name}</TableCell><TableCell>{invoice.lines.map((line) => `${line.item.name} ${Number(line.quantity).toFixed(3)} ${line.item.unit.code}`).join(', ')}</TableCell><TableCell align="right">{Number(invoice.totalAmount).toFixed(2)}</TableCell></TableRow>)}</TableBody></Table>;
-}
-
-function ReturnTable({ returns }) {
-  return <Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Return</TableCell><TableCell>Vendor</TableCell><TableCell>Warehouse</TableCell><TableCell>Items</TableCell><TableCell align="right">Total</TableCell></TableRow></TableHead><TableBody>{returns.map((purchaseReturn) => <TableRow key={purchaseReturn.id}><TableCell>{formatDate(purchaseReturn.returnDate)}</TableCell><TableCell>{purchaseReturn.returnNo}</TableCell><TableCell>{purchaseReturn.vendor.name}</TableCell><TableCell>{purchaseReturn.warehouse.name}</TableCell><TableCell>{purchaseReturn.lines.map((line) => `${line.item.name} ${Number(line.quantity).toFixed(3)} ${line.item.unit.code}`).join(', ')}</TableCell><TableCell align="right">{Number(purchaseReturn.totalAmount).toFixed(2)}</TableCell></TableRow>)}</TableBody></Table>;
+  return <Stack spacing={2.5} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'flex-end' }}><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>{label}</Button></Stack>{children}</Stack>;
 }
 
 function SimpleDialog({ open, title, onClose, onSubmit, children }) {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { CompaniesService } from './companies.service';
 import { CreateBranchDto } from './dto/create-branch.dto';
@@ -17,8 +17,8 @@ export class CompaniesController {
 
   @Get()
   @ApiOkResponse({ description: 'List companies with branches, warehouses, and voucher series.' })
-  listCompanies() {
-    return this.companiesService.listCompanies();
+  listCompanies(@Query('summary') summary?: string) {
+    return this.companiesService.listCompanies(summary === 'true');
   }
 
   @Post()
