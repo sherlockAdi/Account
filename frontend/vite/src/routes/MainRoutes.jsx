@@ -19,6 +19,8 @@ const ManufacturingPage = Loadable(lazy(() => import('pages/manufacturing/Manufa
 const PayrollPage = Loadable(lazy(() => import('pages/payroll/PayrollPage')));
 const BankingPage = Loadable(lazy(() => import('pages/banking/BankingPage')));
 const ReportsPage = Loadable(lazy(() => import('pages/reports/ReportsPage')));
+const SmartReportsPage = Loadable(lazy(() => import('pages/smart-reports/SmartReportsPage')));
+const SystemSettingPage = Loadable(lazy(() => import('pages/system-setting/SystemSettingPage')));
 const BudgetPage = Loadable(lazy(() => import('pages/budget/BudgetPage')));
 const GrandPage = Loadable(lazy(() => import('pages/grand/GrandPage')));
 const UtilizationPage = Loadable(lazy(() => import('pages/utilization/UtilizationPage')));
@@ -111,6 +113,14 @@ const MainRoutes = {
     {
       path: 'reports',
       element: <ReportsPage />
+    },
+    {
+      path: 'smart-reports',
+      element: <SmartReportsPage />
+    },
+    {
+      path: 'system-setting',
+      element: <SystemSettingPage />
     },
     {
       path: 'budget',

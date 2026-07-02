@@ -29,6 +29,7 @@ import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import DateField from 'components/DateField';
 
 import { formatDate, toIsoDate } from 'utils/dateFormat';
+import { useSearchParams } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 
@@ -110,6 +111,7 @@ function dateValue(value) {
 }
 
 export default function CompaniesPage() {
+  const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(0);
   const [companies, setCompanies] = useState([]);
   const [message, setMessage] = useState('');
@@ -124,9 +126,14 @@ export default function CompaniesPage() {
   const [seriesForm, setSeriesForm] = useState(emptySeries);
 
   const branches = useMemo(() => companies.flatMap((company) => company.branches.map((branch) => ({ ...branch, company }))), [companies]);
-  const warehouses = useMemo(() => branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch }))), [branches]);
-  const voucherSeries = useMemo(() => companies.flatMap((company) => company.voucherSeries.map((series) => ({ ...series, company }))), [companies]);
-
+  const warehouses = useMemo(
+    () => branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch }))),
+    [branches]
+  );
+  const voucherSeries = useMemo(
+    () => companies.flatMap((company) => company.voucherSeries.map((series) => ({ ...series, company }))),
+    [companies]
+  );
   async function loadCompanies() {
     setCompanies(await api('/companies'));
   }
@@ -134,6 +141,19 @@ export default function CompaniesPage() {
   useEffect(() => {
     loadCompanies().catch((loadError) => setError(loadError.message));
   }, []);
+
+  useEffect(() => {
+    const view = searchParams.get('view');
+    const tabMap = {
+      company: 0,
+      branch: 1,
+      warehouse: 2,
+      'voucher-series': 3
+    };
+    if (view && tabMap[view] !== undefined) {
+      setTab(tabMap[view]);
+    }
+  }, [searchParams]);
 
   function openCreateCompany() {
     setCompanyForm(emptyCompany);
@@ -182,10 +202,11 @@ export default function CompaniesPage() {
 
   async function saveCompany(event) {
     event.preventDefault();
-    await save(() =>
-      companyForm.id
-        ? api(`/companies/${companyForm.id}`, { method: 'PATCH', body: JSON.stringify(companyForm) })
-        : api('/companies', { method: 'POST', body: JSON.stringify(companyForm) }),
+    await save(
+      () =>
+        companyForm.id
+          ? api(`/companies/${companyForm.id}`, { method: 'PATCH', body: JSON.stringify(companyForm) })
+          : api('/companies', { method: 'POST', body: JSON.stringify(companyForm) }),
       companyForm.id ? 'Company updated' : 'Company created',
       () => setCompanyModalOpen(false)
     );
@@ -194,10 +215,11 @@ export default function CompaniesPage() {
   async function saveBranch(event) {
     event.preventDefault();
     const { companyId, ...body } = branchForm;
-    await save(() =>
-      branchForm.id
-        ? api(`/companies/branches/${branchForm.id}`, { method: 'PATCH', body: JSON.stringify(body) })
-        : api(`/companies/${companyId}/branches`, { method: 'POST', body: JSON.stringify(body) }),
+    await save(
+      () =>
+        branchForm.id
+          ? api(`/companies/branches/${branchForm.id}`, { method: 'PATCH', body: JSON.stringify(body) })
+          : api(`/companies/${companyId}/branches`, { method: 'POST', body: JSON.stringify(body) }),
       branchForm.id ? 'Branch updated' : 'Branch created',
       () => setBranchModalOpen(false)
     );
@@ -206,10 +228,11 @@ export default function CompaniesPage() {
   async function saveWarehouse(event) {
     event.preventDefault();
     const { branchId, ...body } = warehouseForm;
-    await save(() =>
-      warehouseForm.id
-        ? api(`/companies/warehouses/${warehouseForm.id}`, { method: 'PATCH', body: JSON.stringify(body) })
-        : api(`/companies/branches/${branchId}/warehouses`, { method: 'POST', body: JSON.stringify(body) }),
+    await save(
+      () =>
+        warehouseForm.id
+          ? api(`/companies/warehouses/${warehouseForm.id}`, { method: 'PATCH', body: JSON.stringify(body) })
+          : api(`/companies/branches/${branchId}/warehouses`, { method: 'POST', body: JSON.stringify(body) }),
       warehouseForm.id ? 'Warehouse updated' : 'Warehouse created',
       () => setWarehouseModalOpen(false)
     );
@@ -218,10 +241,17 @@ export default function CompaniesPage() {
   async function saveSeries(event) {
     event.preventDefault();
     const { companyId, ...body } = seriesForm;
-    await save(() =>
-      seriesForm.id
-        ? api(`/companies/voucher-series/${seriesForm.id}`, { method: 'PATCH', body: JSON.stringify({ ...body, nextNumber: Number(body.nextNumber), padding: Number(body.padding) }) })
-        : api(`/companies/${companyId}/voucher-series`, { method: 'POST', body: JSON.stringify({ ...body, nextNumber: Number(body.nextNumber), padding: Number(body.padding) }) }),
+    await save(
+      () =>
+        seriesForm.id
+          ? api(`/companies/voucher-series/${seriesForm.id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ ...body, nextNumber: Number(body.nextNumber), padding: Number(body.padding) })
+            })
+          : api(`/companies/${companyId}/voucher-series`, {
+              method: 'POST',
+              body: JSON.stringify({ ...body, nextNumber: Number(body.nextNumber), padding: Number(body.padding) })
+            }),
       seriesForm.id ? 'Voucher series updated' : 'Voucher series created',
       () => setSeriesModalOpen(false)
     );
@@ -266,10 +296,37 @@ export default function CompaniesPage() {
         </Box>
       </Grid>
 
-      <CompanyModal open={companyModalOpen} form={companyForm} setForm={setCompanyForm} onClose={() => setCompanyModalOpen(false)} onSubmit={saveCompany} />
-      <BranchModal open={branchModalOpen} companies={companies} form={branchForm} setForm={setBranchForm} onClose={() => setBranchModalOpen(false)} onSubmit={saveBranch} />
-      <WarehouseModal open={warehouseModalOpen} branches={branches} form={warehouseForm} setForm={setWarehouseForm} onClose={() => setWarehouseModalOpen(false)} onSubmit={saveWarehouse} />
-      <SeriesModal open={seriesModalOpen} companies={companies} form={seriesForm} setForm={setSeriesForm} onClose={() => setSeriesModalOpen(false)} onSubmit={saveSeries} />
+      <CompanyModal
+        open={companyModalOpen}
+        form={companyForm}
+        setForm={setCompanyForm}
+        onClose={() => setCompanyModalOpen(false)}
+        onSubmit={saveCompany}
+      />
+      <BranchModal
+        open={branchModalOpen}
+        companies={companies}
+        form={branchForm}
+        setForm={setBranchForm}
+        onClose={() => setBranchModalOpen(false)}
+        onSubmit={saveBranch}
+      />
+      <WarehouseModal
+        open={warehouseModalOpen}
+        branches={branches}
+        form={warehouseForm}
+        setForm={setWarehouseForm}
+        onClose={() => setWarehouseModalOpen(false)}
+        onSubmit={saveWarehouse}
+      />
+      <SeriesModal
+        open={seriesModalOpen}
+        companies={companies}
+        form={seriesForm}
+        setForm={setSeriesForm}
+        onClose={() => setSeriesModalOpen(false)}
+        onSubmit={saveSeries}
+      />
     </Grid>
   );
 }
@@ -291,16 +348,34 @@ function CompanyGrid({ companies, onCreate, onEdit }) {
   return (
     <GridShell onCreate={onCreate} createLabel="Create Company">
       <Table size="small">
-        <TableHead><TableRow><TableCell>Company</TableCell><TableCell>GSTIN</TableCell><TableCell>Financial Year</TableCell><TableCell>Branches</TableCell><TableCell>Status</TableCell><TableCell align="right">Action</TableCell></TableRow></TableHead>
+        <TableHead>
+          <TableRow>
+            <TableCell>Company</TableCell>
+            <TableCell>GSTIN</TableCell>
+            <TableCell>Financial Year</TableCell>
+            <TableCell>Branches</TableCell>
+            <TableCell>Status</TableCell>
+            <TableCell align="right">Action</TableCell>
+          </TableRow>
+        </TableHead>
         <TableBody>
           {companies.map((company) => (
             <TableRow key={company.id} hover>
-              <TableCell><Typography variant="subtitle1">{company.name}</Typography><Typography variant="caption" color="text.secondary">{company.code}</Typography></TableCell>
+              <TableCell>
+                <Typography variant="subtitle1">{company.name}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {company.code}
+                </Typography>
+              </TableCell>
               <TableCell>{company.gstin || '-'}</TableCell>
               <TableCell>{formatDate(company.financialYearStart)}</TableCell>
               <TableCell>{company.branches.length}</TableCell>
               <TableCell>{company.isActive ? 'Active' : 'Inactive'}</TableCell>
-              <TableCell align="right"><Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(company)}>Edit</Button></TableCell>
+              <TableCell align="right">
+                <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(company)}>
+                  Edit
+                </Button>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -313,16 +388,35 @@ function BranchGrid({ branches, onCreate, onEdit }) {
   return (
     <GridShell onCreate={onCreate} createLabel="Create Branch">
       <Table size="small">
-        <TableHead><TableRow><TableCell>Branch</TableCell><TableCell>Company</TableCell><TableCell>GSTIN</TableCell><TableCell>Warehouses</TableCell><TableCell>Status</TableCell><TableCell align="right">Action</TableCell></TableRow></TableHead>
+        <TableHead>
+          <TableRow>
+            <TableCell>Branch</TableCell>
+            <TableCell>Company</TableCell>
+            <TableCell>GSTIN</TableCell>
+            <TableCell>Warehouses</TableCell>
+            <TableCell>Status</TableCell>
+            <TableCell align="right">Action</TableCell>
+          </TableRow>
+        </TableHead>
         <TableBody>
           {branches.map((branch) => (
             <TableRow key={branch.id} hover>
-              <TableCell><Typography variant="subtitle1">{branch.name}</Typography><Typography variant="caption" color="text.secondary">{branch.code}{branch.isPrimary ? ' | Primary' : ''}</Typography></TableCell>
+              <TableCell>
+                <Typography variant="subtitle1">{branch.name}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {branch.code}
+                  {branch.isPrimary ? ' | Primary' : ''}
+                </Typography>
+              </TableCell>
               <TableCell>{branch.company.name}</TableCell>
               <TableCell>{branch.gstin || '-'}</TableCell>
               <TableCell>{branch.warehouses.length}</TableCell>
               <TableCell>{branch.isActive ? 'Active' : 'Inactive'}</TableCell>
-              <TableCell align="right"><Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(branch)}>Edit</Button></TableCell>
+              <TableCell align="right">
+                <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(branch)}>
+                  Edit
+                </Button>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -335,15 +429,33 @@ function WarehouseGrid({ warehouses, onCreate, onEdit }) {
   return (
     <GridShell onCreate={onCreate} createLabel="Create Warehouse">
       <Table size="small">
-        <TableHead><TableRow><TableCell>Warehouse</TableCell><TableCell>Branch</TableCell><TableCell>City</TableCell><TableCell>Status</TableCell><TableCell align="right">Action</TableCell></TableRow></TableHead>
+        <TableHead>
+          <TableRow>
+            <TableCell>Warehouse</TableCell>
+            <TableCell>Branch</TableCell>
+            <TableCell>City</TableCell>
+            <TableCell>Status</TableCell>
+            <TableCell align="right">Action</TableCell>
+          </TableRow>
+        </TableHead>
         <TableBody>
           {warehouses.map((warehouse) => (
             <TableRow key={warehouse.id} hover>
-              <TableCell><Typography variant="subtitle1">{warehouse.name}</Typography><Typography variant="caption" color="text.secondary">{warehouse.code}{warehouse.isPrimary ? ' | Primary' : ''}</Typography></TableCell>
+              <TableCell>
+                <Typography variant="subtitle1">{warehouse.name}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {warehouse.code}
+                  {warehouse.isPrimary ? ' | Primary' : ''}
+                </Typography>
+              </TableCell>
               <TableCell>{warehouse.branch.name}</TableCell>
               <TableCell>{warehouse.city || '-'}</TableCell>
               <TableCell>{warehouse.isActive ? 'Active' : 'Inactive'}</TableCell>
-              <TableCell align="right"><Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(warehouse)}>Edit</Button></TableCell>
+              <TableCell align="right">
+                <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(warehouse)}>
+                  Edit
+                </Button>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -356,16 +468,33 @@ function SeriesGrid({ series, onCreate, onEdit }) {
   return (
     <GridShell onCreate={onCreate} createLabel="Create Series">
       <Table size="small">
-        <TableHead><TableRow><TableCell>Module</TableCell><TableCell>Company</TableCell><TableCell>Format</TableCell><TableCell>Next</TableCell><TableCell>Status</TableCell><TableCell align="right">Action</TableCell></TableRow></TableHead>
+        <TableHead>
+          <TableRow>
+            <TableCell>Module</TableCell>
+            <TableCell>Company</TableCell>
+            <TableCell>Format</TableCell>
+            <TableCell>Next</TableCell>
+            <TableCell>Status</TableCell>
+            <TableCell align="right">Action</TableCell>
+          </TableRow>
+        </TableHead>
         <TableBody>
           {series.map((item) => (
             <TableRow key={item.id} hover>
               <TableCell>{item.module}</TableCell>
               <TableCell>{item.company.name}</TableCell>
-              <TableCell>{item.prefix}{String(item.nextNumber).padStart(item.padding, '0')}{item.suffix || ''}</TableCell>
+              <TableCell>
+                {item.prefix}
+                {String(item.nextNumber).padStart(item.padding, '0')}
+                {item.suffix || ''}
+              </TableCell>
               <TableCell>{item.nextNumber}</TableCell>
               <TableCell>{item.isActive ? 'Active' : 'Inactive'}</TableCell>
-              <TableCell align="right"><Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(item)}>Edit</Button></TableCell>
+              <TableCell align="right">
+                <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(item)}>
+                  Edit
+                </Button>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -379,14 +508,65 @@ function CompanyModal({ open, form, setForm, onClose, onSubmit }) {
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <Box component="form" onSubmit={onSubmit}>
         <DialogTitle>{form.id ? 'Edit Company' : 'Create Company'}</DialogTitle>
-        <DialogContent><Grid container spacing={2} sx={{ mt: 1 }}>{[
-          ['name', 'Name'], ['legalName', 'Legal name'], ['code', 'Code'], ['gstin', 'GSTIN'], ['pan', 'PAN'], ['email', 'Email'], ['phone', 'Phone'], ['addressLine1', 'Address line 1'], ['addressLine2', 'Address line 2'], ['city', 'City'], ['state', 'State'], ['country', 'Country'], ['pincode', 'Pincode']
-        ].map(([key, label]) => <Grid key={key} size={{ xs: 12, md: 6 }}><TextField fullWidth label={label} value={form[key] || ''} onChange={(event) => setForm({ ...form, [key]: event.target.value })} required={['name', 'code'].includes(key)} /></Grid>)}
-          <Grid size={{ xs: 12, md: 6 }}><DateField fullWidth label="Financial year start" value={form.financialYearStart} onChange={(event) => setForm({ ...form, financialYearStart: event.target.value })} required /></Grid>
-          <Grid size={{ xs: 12, md: 6 }}><DateField fullWidth label="Books start date" value={form.booksStartDate} onChange={(event) => setForm({ ...form, booksStartDate: event.target.value })} required /></Grid>
-          <Grid size={12}><FormControlLabel control={<Checkbox checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />} label="Active" /></Grid>
-        </Grid></DialogContent>
-        <DialogActions><Button onClick={onClose}>Cancel</Button><Button type="submit" variant="contained">Save</Button></DialogActions>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            {[
+              ['name', 'Name'],
+              ['legalName', 'Legal name'],
+              ['code', 'Code'],
+              ['gstin', 'GSTIN'],
+              ['pan', 'PAN'],
+              ['email', 'Email'],
+              ['phone', 'Phone'],
+              ['addressLine1', 'Address line 1'],
+              ['addressLine2', 'Address line 2'],
+              ['city', 'City'],
+              ['state', 'State'],
+              ['country', 'Country'],
+              ['pincode', 'Pincode']
+            ].map(([key, label]) => (
+              <Grid key={key} size={{ xs: 12, md: 6 }}>
+                <TextField
+                  fullWidth
+                  label={label}
+                  value={form[key] || ''}
+                  onChange={(event) => setForm({ ...form, [key]: event.target.value })}
+                  required={['name', 'code'].includes(key)}
+                />
+              </Grid>
+            ))}
+            <Grid size={{ xs: 12, md: 6 }}>
+              <DateField
+                fullWidth
+                label="Financial year start"
+                value={form.financialYearStart}
+                onChange={(event) => setForm({ ...form, financialYearStart: event.target.value })}
+                required
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <DateField
+                fullWidth
+                label="Books start date"
+                value={form.booksStartDate}
+                onChange={(event) => setForm({ ...form, booksStartDate: event.target.value })}
+                required
+              />
+            </Grid>
+            <Grid size={12}>
+              <FormControlLabel
+                control={<Checkbox checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />}
+                label="Active"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="contained">
+            Save
+          </Button>
+        </DialogActions>
       </Box>
     </Dialog>
   );
@@ -397,12 +577,55 @@ function BranchModal({ open, companies, form, setForm, onClose, onSubmit }) {
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <Box component="form" onSubmit={onSubmit}>
         <DialogTitle>{form.id ? 'Edit Branch' : 'Create Branch'}</DialogTitle>
-        <DialogContent><Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid size={{ xs: 12, md: 6 }}><TextField select fullWidth label="Company" value={form.companyId} disabled={Boolean(form.id)} onChange={(event) => setForm({ ...form, companyId: event.target.value })}>{companies.map((company) => <MenuItem key={company.id} value={company.id}>{company.name}</MenuItem>)}</TextField></Grid>
-          {['name', 'code', 'gstin', 'email', 'phone', 'addressLine1', 'addressLine2', 'city', 'state', 'country', 'pincode'].map((key) => <Grid key={key} size={{ xs: 12, md: 6 }}><TextField fullWidth label={key} value={form[key] || ''} onChange={(event) => setForm({ ...form, [key]: event.target.value })} required={['name', 'code'].includes(key)} /></Grid>)}
-          <Grid size={12}><FormControlLabel control={<Checkbox checked={form.isPrimary} onChange={(event) => setForm({ ...form, isPrimary: event.target.checked })} />} label="Primary branch" /><FormControlLabel control={<Checkbox checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />} label="Active" /></Grid>
-        </Grid></DialogContent>
-        <DialogActions><Button onClick={onClose}>Cancel</Button><Button type="submit" variant="contained">Save</Button></DialogActions>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                select
+                fullWidth
+                label="Company"
+                value={form.companyId}
+                disabled={Boolean(form.id)}
+                onChange={(event) => setForm({ ...form, companyId: event.target.value })}
+              >
+                {companies.map((company) => (
+                  <MenuItem key={company.id} value={company.id}>
+                    {company.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            {['name', 'code', 'gstin', 'email', 'phone', 'addressLine1', 'addressLine2', 'city', 'state', 'country', 'pincode'].map(
+              (key) => (
+                <Grid key={key} size={{ xs: 12, md: 6 }}>
+                  <TextField
+                    fullWidth
+                    label={key}
+                    value={form[key] || ''}
+                    onChange={(event) => setForm({ ...form, [key]: event.target.value })}
+                    required={['name', 'code'].includes(key)}
+                  />
+                </Grid>
+              )
+            )}
+            <Grid size={12}>
+              <FormControlLabel
+                control={<Checkbox checked={form.isPrimary} onChange={(event) => setForm({ ...form, isPrimary: event.target.checked })} />}
+                label="Primary branch"
+              />
+              <FormControlLabel
+                control={<Checkbox checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />}
+                label="Active"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="contained">
+            Save
+          </Button>
+        </DialogActions>
       </Box>
     </Dialog>
   );
@@ -413,12 +636,48 @@ function WarehouseModal({ open, branches, form, setForm, onClose, onSubmit }) {
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <Box component="form" onSubmit={onSubmit}>
         <DialogTitle>{form.id ? 'Edit Warehouse' : 'Create Warehouse'}</DialogTitle>
-        <DialogContent><Stack spacing={2} sx={{ mt: 1 }}>
-          <TextField select label="Branch" value={form.branchId} disabled={Boolean(form.id)} onChange={(event) => setForm({ ...form, branchId: event.target.value })}>{branches.map((branch) => <MenuItem key={branch.id} value={branch.id}>{branch.company.name} - {branch.name}</MenuItem>)}</TextField>
-          {['name', 'code', 'addressLine1', 'city', 'state'].map((key) => <TextField key={key} label={key} value={form[key] || ''} onChange={(event) => setForm({ ...form, [key]: event.target.value })} required={['name', 'code'].includes(key)} />)}
-          <Box><FormControlLabel control={<Checkbox checked={form.isPrimary} onChange={(event) => setForm({ ...form, isPrimary: event.target.checked })} />} label="Primary warehouse" /><FormControlLabel control={<Checkbox checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />} label="Active" /></Box>
-        </Stack></DialogContent>
-        <DialogActions><Button onClick={onClose}>Cancel</Button><Button type="submit" variant="contained">Save</Button></DialogActions>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              select
+              label="Branch"
+              value={form.branchId}
+              disabled={Boolean(form.id)}
+              onChange={(event) => setForm({ ...form, branchId: event.target.value })}
+            >
+              {branches.map((branch) => (
+                <MenuItem key={branch.id} value={branch.id}>
+                  {branch.company.name} - {branch.name}
+                </MenuItem>
+              ))}
+            </TextField>
+            {['name', 'code', 'addressLine1', 'city', 'state'].map((key) => (
+              <TextField
+                key={key}
+                label={key}
+                value={form[key] || ''}
+                onChange={(event) => setForm({ ...form, [key]: event.target.value })}
+                required={['name', 'code'].includes(key)}
+              />
+            ))}
+            <Box>
+              <FormControlLabel
+                control={<Checkbox checked={form.isPrimary} onChange={(event) => setForm({ ...form, isPrimary: event.target.checked })} />}
+                label="Primary warehouse"
+              />
+              <FormControlLabel
+                control={<Checkbox checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />}
+                label="Active"
+              />
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="contained">
+            Save
+          </Button>
+        </DialogActions>
       </Box>
     </Dialog>
   );
@@ -429,21 +688,51 @@ function SeriesModal({ open, companies, form, setForm, onClose, onSubmit }) {
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <Box component="form" onSubmit={onSubmit}>
         <DialogTitle>{form.id ? 'Edit Voucher Series' : 'Create Voucher Series'}</DialogTitle>
-        <DialogContent><Stack spacing={2} sx={{ mt: 1 }}>
-          <TextField select label="Company" value={form.companyId} disabled={Boolean(form.id)} onChange={(event) => setForm({ ...form, companyId: event.target.value })}>{companies.map((company) => <MenuItem key={company.id} value={company.id}>{company.name}</MenuItem>)}</TextField>
-          <TextField label="Module" value={form.module} onChange={(event) => setForm({ ...form, module: event.target.value })} required />
-          <TextField label="Prefix" value={form.prefix} onChange={(event) => setForm({ ...form, prefix: event.target.value })} required />
-          <TextField label="Next number" type="number" value={form.nextNumber} onChange={(event) => setForm({ ...form, nextNumber: event.target.value })} required />
-          <TextField label="Padding" type="number" value={form.padding} onChange={(event) => setForm({ ...form, padding: event.target.value })} required />
-          <TextField label="Suffix" value={form.suffix || ''} onChange={(event) => setForm({ ...form, suffix: event.target.value })} />
-          <FormControlLabel control={<Checkbox checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />} label="Active" />
-        </Stack></DialogContent>
-        <DialogActions><Button onClick={onClose}>Cancel</Button><Button type="submit" variant="contained">Save</Button></DialogActions>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              select
+              label="Company"
+              value={form.companyId}
+              disabled={Boolean(form.id)}
+              onChange={(event) => setForm({ ...form, companyId: event.target.value })}
+            >
+              {companies.map((company) => (
+                <MenuItem key={company.id} value={company.id}>
+                  {company.name}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField label="Module" value={form.module} onChange={(event) => setForm({ ...form, module: event.target.value })} required />
+            <TextField label="Prefix" value={form.prefix} onChange={(event) => setForm({ ...form, prefix: event.target.value })} required />
+            <TextField
+              label="Next number"
+              type="number"
+              value={form.nextNumber}
+              onChange={(event) => setForm({ ...form, nextNumber: event.target.value })}
+              required
+            />
+            <TextField
+              label="Padding"
+              type="number"
+              value={form.padding}
+              onChange={(event) => setForm({ ...form, padding: event.target.value })}
+              required
+            />
+            <TextField label="Suffix" value={form.suffix || ''} onChange={(event) => setForm({ ...form, suffix: event.target.value })} />
+            <FormControlLabel
+              control={<Checkbox checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />}
+              label="Active"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="contained">
+            Save
+          </Button>
+        </DialogActions>
       </Box>
     </Dialog>
   );
 }
-
-
-
-

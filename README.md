@@ -32,3 +32,14 @@ npm run start
 ```
 
 Frontend: `http://localhost:5173`
+
+## Smart Reports NLP Service
+
+```bash
+cd python-nlp-api
+python app.py
+```
+
+NLP API: `http://localhost:8003`
+
+The Smart Reports page uses this service first, then falls back to the local parser if the NLP API is unavailable.

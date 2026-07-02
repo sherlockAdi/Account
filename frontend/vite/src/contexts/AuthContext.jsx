@@ -1,13 +1,25 @@
 import PropTypes from 'prop-types';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+const API_URL = String(import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1').trim().replace(/\/+$/, '');
 const TOKEN_KEY = 'accounterp_access_token';
 
-const AuthContext = createContext(null);
+const defaultAuthValue = {
+  token: null,
+  user: null,
+  loading: false,
+  isAuthenticated: false,
+  login: async () => {
+    throw new Error('AuthProvider is missing');
+  },
+  logout: () => {}
+};
+
+const AuthContext = createContext(defaultAuthValue);
 
 async function request(path, options = {}) {
-  const response = await fetch(`${API_URL}${path}`, {
+  const cleanPath = String(path || '').trim().replace(/^\/+/, '/');
+  const response = await fetch(`${API_URL}${cleanPath}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
@@ -68,8 +80,7 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used inside AuthProvider');
-  return context;
+  return context || defaultAuthValue;
 }
 
 AuthProvider.propTypes = { children: PropTypes.node };
