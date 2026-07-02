@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -13,19 +13,13 @@ import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
 
 import EditOutlined from '@ant-design/icons/EditOutlined';
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 
 import { formatDate, toIsoDate } from 'utils/dateFormat';
@@ -114,6 +108,14 @@ export default function CompaniesPage() {
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState(0);
   const [companies, setCompanies] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [voucherSeries, setVoucherSeries] = useState([]);
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [companiesLoaded, setCompaniesLoaded] = useState(false);
+  const [branchesLoaded, setBranchesLoaded] = useState(false);
+  const [warehousesLoaded, setWarehousesLoaded] = useState(false);
+  const [seriesLoaded, setSeriesLoaded] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
@@ -125,6 +127,7 @@ export default function CompaniesPage() {
   const [warehouseForm, setWarehouseForm] = useState(emptyWarehouse);
   const [seriesForm, setSeriesForm] = useState(emptySeries);
 
+<<<<<<< HEAD
   const branches = useMemo(() => companies.flatMap((company) => company.branches.map((branch) => ({ ...branch, company }))), [companies]);
   const warehouses = useMemo(
     () => branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch }))),
@@ -136,11 +139,59 @@ export default function CompaniesPage() {
   );
   async function loadCompanies() {
     setCompanies(await api('/companies'));
+=======
+  async function ensureCompanies(force = false) {
+    if (!force && companiesLoaded && companies.length) return companies;
+    const companyData = await api('/companies?summary=true');
+    setCompanies(companyData);
+    setCompaniesLoaded(true);
+    return companyData;
+  }
+
+  async function ensureBranches(force = false) {
+    if (!force && branchesLoaded && branches.length) return branches;
+    const companyData = await ensureCompanies(force);
+    const branchGroups = await Promise.all(companyData.map(async (company) => (await api(`/companies/${company.id}/branches`)).map((branch) => ({ ...branch, company }))));
+    const branchData = branchGroups.flat();
+    setBranches(branchData);
+    setBranchesLoaded(true);
+    return branchData;
+  }
+
+  async function ensureWarehouses(force = false) {
+    if (!force && warehousesLoaded && warehouses.length) return warehouses;
+    const branchData = await ensureBranches(force);
+    const warehouseGroups = await Promise.all(branchData.map(async (branch) => (await api(`/companies/branches/${branch.id}/warehouses`)).map((warehouse) => ({ ...warehouse, branch }))));
+    const warehouseData = warehouseGroups.flat();
+    setWarehouses(warehouseData);
+    setWarehousesLoaded(true);
+    return warehouseData;
+  }
+
+  async function ensureVoucherSeries(force = false) {
+    if (!force && seriesLoaded && voucherSeries.length) return voucherSeries;
+    const companyData = await ensureCompanies(force);
+    const seriesGroups = await Promise.all(companyData.map(async (company) => (await api(`/companies/${company.id}/voucher-series`)).map((series) => ({ ...series, company }))));
+    const seriesData = seriesGroups.flat();
+    setVoucherSeries(seriesData);
+    setSeriesLoaded(true);
+    return seriesData;
+  }
+
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
+    setError('');
+    if (tabIndex === 0) await ensureCompanies(force);
+    if (tabIndex === 1) await ensureBranches(force);
+    if (tabIndex === 2) await ensureWarehouses(force);
+    if (tabIndex === 3) await ensureVoucherSeries(force);
+    setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
+>>>>>>> 9b1acf904f7e7821b672e61428e6e17fed0135ee
   }
 
   useEffect(() => {
-    loadCompanies().catch((loadError) => setError(loadError.message));
-  }, []);
+    loadTabData(tab).catch((loadError) => setError(loadError.message));
+  }, [tab]);
 
   useEffect(() => {
     const view = searchParams.get('view');
@@ -170,8 +221,9 @@ export default function CompaniesPage() {
     setCompanyModalOpen(true);
   }
 
-  function openCreateBranch() {
-    setBranchForm({ ...emptyBranch, companyId: companies[0]?.id || '' });
+  async function openCreateBranch() {
+    const companyData = await ensureCompanies();
+    setBranchForm({ ...emptyBranch, companyId: companyData[0]?.id || '' });
     setBranchModalOpen(true);
   }
 
@@ -180,8 +232,9 @@ export default function CompaniesPage() {
     setBranchModalOpen(true);
   }
 
-  function openCreateWarehouse() {
-    setWarehouseForm({ ...emptyWarehouse, branchId: branches[0]?.id || '' });
+  async function openCreateWarehouse() {
+    const branchData = await ensureBranches();
+    setWarehouseForm({ ...emptyWarehouse, branchId: branchData[0]?.id || '' });
     setWarehouseModalOpen(true);
   }
 
@@ -190,8 +243,9 @@ export default function CompaniesPage() {
     setWarehouseModalOpen(true);
   }
 
-  function openCreateSeries() {
-    setSeriesForm({ ...emptySeries, companyId: companies[0]?.id || '' });
+  async function openCreateSeries() {
+    const companyData = await ensureCompanies();
+    setSeriesForm({ ...emptySeries, companyId: companyData[0]?.id || '' });
     setSeriesModalOpen(true);
   }
 
@@ -264,7 +318,8 @@ export default function CompaniesPage() {
       await action();
       close();
       setMessage(successMessage);
-      await loadCompanies();
+      await loadTabData(tab, true);
+      if (tab !== 0) await ensureCompanies(true);
     } catch (saveError) {
       setError(saveError.message);
     }
@@ -339,14 +394,33 @@ function GridShell({ onCreate, createLabel, children }) {
           {createLabel}
         </Button>
       </Stack>
-      <TableContainer>{children}</TableContainer>
+      {children}
     </Stack>
   );
 }
 
+const statusOptions = [{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }];
+
 function CompanyGrid({ companies, onCreate, onEdit }) {
+  const rows = companies.map((company) => ({
+    ...company,
+    companyText: `${company.name} ${company.code}`,
+    financialYearDate: company.financialYearStart,
+    financialYear: formatDate(company.financialYearStart),
+    branchCount: company.branches?.length ?? company._count?.branches ?? 0,
+    statusText: company.isActive ? 'Active' : 'Inactive'
+  }));
+  const columns = [
+    { field: 'companyText', headerName: 'Company', flex: 1, minWidth: 220 },
+    { field: 'gstin', headerName: 'GSTIN', flex: 0.8, minWidth: 160, valueGetter: (value) => value || '-' },
+    { field: 'financialYear', headerName: 'Financial Year', flex: 0.8, minWidth: 160 },
+    { field: 'branchCount', headerName: 'Branches', type: 'number', flex: 0.6, minWidth: 120 },
+    { field: 'statusText', headerName: 'Status', flex: 0.6, minWidth: 120 },
+    { field: 'actions', headerName: 'Action', sortable: false, filterable: false, exportable: false, flex: 0.6, minWidth: 120, renderCell: (params) => <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(params.row)}>Edit</Button> }
+  ];
   return (
     <GridShell onCreate={onCreate} createLabel="Create Company">
+<<<<<<< HEAD
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -380,13 +454,35 @@ function CompanyGrid({ companies, onCreate, onEdit }) {
           ))}
         </TableBody>
       </Table>
+=======
+      <CommonDataGrid title="Companies" rows={rows} columns={columns} fileName="companies" searchPlaceholder="Search companies" dateField="financialYearDate" selectFilters={[{ field: 'statusText', label: 'Status', options: statusOptions }]} />
+>>>>>>> 9b1acf904f7e7821b672e61428e6e17fed0135ee
     </GridShell>
   );
 }
 
 function BranchGrid({ branches, onCreate, onEdit }) {
+  const rows = branches.map((branch) => ({
+    ...branch,
+    branchText: `${branch.name} ${branch.code}${branch.isPrimary ? ' Primary' : ''}`,
+    companyName: branch.company.name,
+    warehouseCount: branch.warehouses.length,
+    statusText: branch.isActive ? 'Active' : 'Inactive',
+    primaryText: branch.isPrimary ? 'Yes' : 'No'
+  }));
+  const companyOptions = Array.from(new Set(rows.map((row) => row.companyName))).map((company) => ({ value: company, label: company }));
+  const columns = [
+    { field: 'branchText', headerName: 'Branch', flex: 1, minWidth: 220 },
+    { field: 'companyName', headerName: 'Company', flex: 1, minWidth: 190 },
+    { field: 'gstin', headerName: 'GSTIN', flex: 0.8, minWidth: 150, valueGetter: (value) => value || '-' },
+    { field: 'warehouseCount', headerName: 'Warehouses', type: 'number', flex: 0.7, minWidth: 130 },
+    { field: 'primaryText', headerName: 'Primary', flex: 0.6, minWidth: 120 },
+    { field: 'statusText', headerName: 'Status', flex: 0.6, minWidth: 120 },
+    { field: 'actions', headerName: 'Action', sortable: false, filterable: false, exportable: false, flex: 0.6, minWidth: 120, renderCell: (params) => <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(params.row)}>Edit</Button> }
+  ];
   return (
     <GridShell onCreate={onCreate} createLabel="Create Branch">
+<<<<<<< HEAD
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -421,13 +517,33 @@ function BranchGrid({ branches, onCreate, onEdit }) {
           ))}
         </TableBody>
       </Table>
+=======
+      <CommonDataGrid title="Branches" rows={rows} columns={columns} fileName="branches" searchPlaceholder="Search branches" selectFilters={[{ field: 'companyName', label: 'Company', options: companyOptions }, { field: 'primaryText', label: 'Primary', options: [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }] }, { field: 'statusText', label: 'Status', options: statusOptions }]} />
+>>>>>>> 9b1acf904f7e7821b672e61428e6e17fed0135ee
     </GridShell>
   );
 }
 
 function WarehouseGrid({ warehouses, onCreate, onEdit }) {
+  const rows = warehouses.map((warehouse) => ({
+    ...warehouse,
+    warehouseText: `${warehouse.name} ${warehouse.code}${warehouse.isPrimary ? ' Primary' : ''}`,
+    branchName: warehouse.branch.name,
+    statusText: warehouse.isActive ? 'Active' : 'Inactive',
+    primaryText: warehouse.isPrimary ? 'Yes' : 'No'
+  }));
+  const branchOptions = Array.from(new Set(rows.map((row) => row.branchName))).map((branch) => ({ value: branch, label: branch }));
+  const columns = [
+    { field: 'warehouseText', headerName: 'Warehouse', flex: 1, minWidth: 220 },
+    { field: 'branchName', headerName: 'Branch', flex: 1, minWidth: 180 },
+    { field: 'city', headerName: 'City', flex: 0.8, minWidth: 140, valueGetter: (value) => value || '-' },
+    { field: 'primaryText', headerName: 'Primary', flex: 0.6, minWidth: 120 },
+    { field: 'statusText', headerName: 'Status', flex: 0.6, minWidth: 120 },
+    { field: 'actions', headerName: 'Action', sortable: false, filterable: false, exportable: false, flex: 0.6, minWidth: 120, renderCell: (params) => <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(params.row)}>Edit</Button> }
+  ];
   return (
     <GridShell onCreate={onCreate} createLabel="Create Warehouse">
+<<<<<<< HEAD
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -460,13 +576,32 @@ function WarehouseGrid({ warehouses, onCreate, onEdit }) {
           ))}
         </TableBody>
       </Table>
+=======
+      <CommonDataGrid title="Warehouses" rows={rows} columns={columns} fileName="warehouses" searchPlaceholder="Search warehouses" selectFilters={[{ field: 'branchName', label: 'Branch', options: branchOptions }, { field: 'primaryText', label: 'Primary', options: [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }] }, { field: 'statusText', label: 'Status', options: statusOptions }]} />
+>>>>>>> 9b1acf904f7e7821b672e61428e6e17fed0135ee
     </GridShell>
   );
 }
 
 function SeriesGrid({ series, onCreate, onEdit }) {
+  const rows = series.map((item) => ({
+    ...item,
+    companyName: item.company.name,
+    formatText: `${item.prefix}${String(item.nextNumber).padStart(item.padding, '0')}${item.suffix || ''}`,
+    statusText: item.isActive ? 'Active' : 'Inactive'
+  }));
+  const companyOptions = Array.from(new Set(rows.map((row) => row.companyName))).map((company) => ({ value: company, label: company }));
+  const columns = [
+    { field: 'module', headerName: 'Module', flex: 1, minWidth: 170 },
+    { field: 'companyName', headerName: 'Company', flex: 1, minWidth: 190 },
+    { field: 'formatText', headerName: 'Format', flex: 1, minWidth: 170 },
+    { field: 'nextNumber', headerName: 'Next', type: 'number', flex: 0.6, minWidth: 120 },
+    { field: 'statusText', headerName: 'Status', flex: 0.6, minWidth: 120 },
+    { field: 'actions', headerName: 'Action', sortable: false, filterable: false, exportable: false, flex: 0.6, minWidth: 120, renderCell: (params) => <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(params.row)}>Edit</Button> }
+  ];
   return (
     <GridShell onCreate={onCreate} createLabel="Create Series">
+<<<<<<< HEAD
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -499,6 +634,9 @@ function SeriesGrid({ series, onCreate, onEdit }) {
           ))}
         </TableBody>
       </Table>
+=======
+      <CommonDataGrid title="Voucher Series" rows={rows} columns={columns} fileName="voucher-series" searchPlaceholder="Search series" selectFilters={[{ field: 'companyName', label: 'Company', options: companyOptions }, { field: 'statusText', label: 'Status', options: statusOptions }]} />
+>>>>>>> 9b1acf904f7e7821b672e61428e6e17fed0135ee
     </GridShell>
   );
 }

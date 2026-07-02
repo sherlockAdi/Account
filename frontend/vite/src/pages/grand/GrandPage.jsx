@@ -13,18 +13,13 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 import { formatDate, todayIso } from 'utils/dateFormat';
 
@@ -252,69 +247,42 @@ export default function GrandPage() {
       </Grid>
 
       <Grid size={{ xs: 12, lg: 7 }}>
-        <TableContainer sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Budget Master</TableCell>
-                <TableCell>Category</TableCell>
-                <TableCell align="right">Total</TableCell>
-                <TableCell align="right">Received</TableCell>
-                <TableCell align="right">Utilized</TableCell>
-                <TableCell align="right">Available</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {budgets.map((budget) => (
-                <TableRow key={budget.id} hover selected={budget.id === currentBudget?.id} onClick={() => { setSelectedBudgetId(budget.id); setSelectedGrantId(''); }} sx={{ cursor: 'pointer' }}>
-                  <TableCell>
-                    <Typography fontWeight={600}>{budget.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">{budget.code}</Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Chip size="small" label={budget.category} color={budget.category === 'GOVERNMENT_GRANT' ? 'primary' : 'default'} />
-                  </TableCell>
-                  <TableCell align="right">{money(budget.totalAmount)}</TableCell>
-                  <TableCell align="right">{money(budget.receivedAmount)}</TableCell>
-                  <TableCell align="right">{money(budget.utilizedAmount)}</TableCell>
-                  <TableCell align="right">{money(budget.availableAmount)}</TableCell>
-                </TableRow>
-              ))}
-              {!budgets.length && <TableRow><TableCell colSpan={6} align="center">No budget masters available.</TableCell></TableRow>}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <CommonDataGrid
+          title="Budget Masters"
+          rows={budgets.map((budget) => ({ ...budget, budgetText: `${budget.name} | ${budget.code}`, totalText: money(budget.totalAmount), receivedText: money(budget.receivedAmount), utilizedText: money(budget.utilizedAmount), availableText: money(budget.availableAmount) }))}
+          columns={[
+            { field: 'budgetText', headerName: 'Budget Master', flex: 1.2, minWidth: 220 },
+            { field: 'category', headerName: 'Category', width: 180, renderCell: ({ value }) => <Chip size="small" label={value} color={value === 'GOVERNMENT_GRANT' ? 'primary' : 'default'} /> },
+            { field: 'totalText', headerName: 'Total', width: 140, align: 'right', headerAlign: 'right' },
+            { field: 'receivedText', headerName: 'Received', width: 140, align: 'right', headerAlign: 'right' },
+            { field: 'utilizedText', headerName: 'Utilized', width: 140, align: 'right', headerAlign: 'right' },
+            { field: 'availableText', headerName: 'Available', width: 140, align: 'right', headerAlign: 'right' }
+          ]}
+          onRowClick={({ row }) => { setSelectedBudgetId(row.id); setSelectedGrantId(''); }}
+          searchPlaceholder="Search budget master, code, or category"
+          selectFilters={[{ field: 'category', label: 'Category' }, { field: 'isActive', label: 'Active' }]}
+          fileName="grant-budget-masters"
+          height={420}
+        />
       </Grid>
 
       <Grid size={{ xs: 12, lg: 5 }}>
-        <TableContainer sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Grant</TableCell>
-                <TableCell align="right">Amount</TableCell>
-                <TableCell align="right">Received</TableCell>
-                <TableCell align="right">Utilized</TableCell>
-                <TableCell align="right">Available</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(currentBudget?.grants || []).map((grant) => (
-                <TableRow key={grant.id} hover selected={grant.id === currentGrant?.id} onClick={() => setSelectedGrantId(grant.id)} sx={{ cursor: 'pointer' }}>
-                  <TableCell>
-                    <Typography fontWeight={600}>{grant.name}</Typography>
-                    <Typography variant="caption" color="text.secondary">{grant.code}{grant.isDefault ? ' / default' : ''}</Typography>
-                  </TableCell>
-                  <TableCell align="right">{money(grant.amount)}</TableCell>
-                  <TableCell align="right">{money(grant.receivedAmount)}</TableCell>
-                  <TableCell align="right">{money(grant.utilizedAmount)}</TableCell>
-                  <TableCell align="right">{money(grant.availableAmount)}</TableCell>
-                </TableRow>
-              ))}
-              {!currentBudget?.grants?.length && <TableRow><TableCell colSpan={5} align="center">No grants created for this master.</TableCell></TableRow>}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <CommonDataGrid
+          title="Grants"
+          rows={(currentBudget?.grants || []).map((grant) => ({ ...grant, grantText: `${grant.name} | ${grant.code}${grant.isDefault ? ' / default' : ''}`, amountText: money(grant.amount), receivedText: money(grant.receivedAmount), utilizedText: money(grant.utilizedAmount), availableText: money(grant.availableAmount), defaultText: grant.isDefault ? 'Default' : 'Standard' }))}
+          columns={[
+            { field: 'grantText', headerName: 'Grant', flex: 1.2, minWidth: 200 },
+            { field: 'amountText', headerName: 'Amount', width: 130, align: 'right', headerAlign: 'right' },
+            { field: 'receivedText', headerName: 'Received', width: 130, align: 'right', headerAlign: 'right' },
+            { field: 'utilizedText', headerName: 'Utilized', width: 130, align: 'right', headerAlign: 'right' },
+            { field: 'availableText', headerName: 'Available', width: 130, align: 'right', headerAlign: 'right' }
+          ]}
+          onRowClick={({ row }) => setSelectedGrantId(row.id)}
+          searchPlaceholder="Search grant or code"
+          selectFilters={[{ field: 'defaultText', label: 'Default' }, { field: 'isActive', label: 'Active' }]}
+          fileName="grant-heads"
+          height={420}
+        />
       </Grid>
 
       <Grid size={12}>
@@ -328,36 +296,22 @@ export default function GrandPage() {
       </Grid>
 
       <Grid size={12}>
-        <TableContainer sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Date</TableCell>
-                <TableCell>Voucher</TableCell>
-                <TableCell>Budget / Grant</TableCell>
-                <TableCell>Flow</TableCell>
-                <TableCell>Narration</TableCell>
-                <TableCell align="right">Debit</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredVouchers.map((voucher) => (
-                <TableRow key={voucher.id} hover>
-                  <TableCell>{formatDate(voucher.voucherDate)}</TableCell>
-                  <TableCell>
-                    <Typography fontWeight={600}>{voucher.voucherNo}</Typography>
-                    <Typography variant="caption" color="text.secondary">{voucher.voucherType}</Typography>
-                  </TableCell>
-                  <TableCell>{voucher.budgetType?.name || '-'} / {voucher.budgetGrant?.name || 'Nil'}</TableCell>
-                  <TableCell><Chip size="small" color={voucher.budgetFlow === 'RECEIPT' ? 'success' : 'warning'} label={voucher.budgetFlow === 'RECEIPT' ? 'Receipt' : 'Utilization'} /></TableCell>
-                  <TableCell>{voucher.narration || '-'}</TableCell>
-                  <TableCell align="right">{money(voucher.lines.filter((line) => line.type === 'DEBIT').reduce((sum, line) => sum + Number(line.amount), 0))}</TableCell>
-                </TableRow>
-              ))}
-              {!filteredVouchers.length && <TableRow><TableCell colSpan={6} align="center">No vouchers tagged to this budget selection.</TableCell></TableRow>}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <CommonDataGrid
+          title="Tagged Voucher Register"
+          rows={filteredVouchers.map((voucher) => ({ ...voucher, dateText: formatDate(voucher.voucherDate), voucherText: `${voucher.voucherNo} | ${voucher.voucherType}`, budgetGrantText: `${voucher.budgetType?.name || '-'} / ${voucher.budgetGrant?.name || 'Nil'}`, flowText: voucher.budgetFlow === 'RECEIPT' ? 'Receipt' : 'Utilization', narrationText: voucher.narration || '-', debitText: money(voucher.lines.filter((line) => line.type === 'DEBIT').reduce((sum, line) => sum + Number(line.amount), 0)) }))}
+          columns={[
+            { field: 'dateText', headerName: 'Date', width: 130 },
+            { field: 'voucherText', headerName: 'Voucher', flex: 1, minWidth: 190 },
+            { field: 'budgetGrantText', headerName: 'Budget / Grant', flex: 1.2, minWidth: 220 },
+            { field: 'flowText', headerName: 'Flow', width: 140, renderCell: ({ row }) => <Chip size="small" color={row.budgetFlow === 'RECEIPT' ? 'success' : 'warning'} label={row.flowText} /> },
+            { field: 'narrationText', headerName: 'Narration', flex: 1.2, minWidth: 220 },
+            { field: 'debitText', headerName: 'Debit', width: 150, align: 'right', headerAlign: 'right' }
+          ]}
+          searchPlaceholder="Search voucher, budget, grant, narration, or flow"
+          dateField="voucherDate"
+          selectFilters={[{ field: 'flowText', label: 'Flow' }, { field: 'budgetGrantText', label: 'Budget / Grant' }, { field: 'voucherType', label: 'Voucher Type' }]}
+          fileName="grant-vouchers"
+        />
       </Grid>
 
       <Dialog open={budgetOpen} onClose={() => setBudgetOpen(false)} fullWidth maxWidth="sm">

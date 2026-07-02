@@ -16,12 +16,6 @@ import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -40,6 +34,7 @@ import ShopOutlined from '@ant-design/icons/ShopOutlined';
 
 import { useAuth } from 'contexts/AuthContext';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
@@ -82,6 +77,8 @@ export default function MarketplacePage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [companiesLoaded, setCompaniesLoaded] = useState(false);
 
   const visibleCatalog = useMemo(() => catalog.filter((addon) => {
     const categoryMatch = category === 'ALL' || addon.category === category;
@@ -89,24 +86,40 @@ export default function MarketplacePage() {
     return categoryMatch && text.includes(search.toLowerCase());
   }), [catalog, category, search]);
 
-  async function loadData() {
+  async function ensureCompanies() {
+    if (companiesLoaded && companies.length) return companies;
+    const companyData = await api('/companies', token);
+    setCompanies(companyData);
+    setCompaniesLoaded(true);
+    return companyData;
+  }
+
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
     try {
       setLoading(true);
       setError('');
-      const [dashboardData, catalogData, installationData, appData, webhookData, companyData] = await Promise.all([
-        api('/marketplace/dashboard', token),
-        api('/marketplace/catalog', token),
-        api('/marketplace/installations', token),
-        api('/marketplace/api-apps', token),
-        api('/marketplace/webhooks', token),
-        api('/companies', token)
-      ]);
-      setDashboard(dashboardData);
-      setCatalog(catalogData);
-      setInstallations(installationData);
-      setApiApps(appData);
-      setWebhooks(webhookData);
-      setCompanies(companyData);
+      if (tabIndex === 0) {
+        const [dashboardData, installationData, webhookData] = await Promise.all([
+          api('/marketplace/dashboard', token),
+          api('/marketplace/installations', token),
+          api('/marketplace/webhooks', token)
+        ]);
+        setDashboard(dashboardData);
+        setInstallations(installationData);
+        setWebhooks(webhookData);
+      }
+      if (tabIndex === 1) setCatalog(await api('/marketplace/catalog', token));
+      if (tabIndex === 2) setInstallations(await api('/marketplace/installations', token));
+      if (tabIndex === 3) {
+        setApiApps(await api('/marketplace/api-apps', token));
+        await ensureCompanies();
+      }
+      if (tabIndex === 4) {
+        setWebhooks(await api('/marketplace/webhooks', token));
+        await ensureCompanies();
+      }
+      setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -114,7 +127,7 @@ export default function MarketplacePage() {
     }
   }
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadTabData(tab); }, [tab]);
 
   async function run(action, success) {
     try {
@@ -122,7 +135,7 @@ export default function MarketplacePage() {
       setMessage('');
       const result = await action();
       setMessage(success);
-      await loadData();
+      await loadTabData(tab, true);
       return result;
     } catch (actionError) {
       setError(actionError.message);
@@ -130,9 +143,10 @@ export default function MarketplacePage() {
     }
   }
 
-  function beginInstall(addon) {
+  async function beginInstall(addon) {
+    const companyData = await ensureCompanies();
     setInstallAddon(addon);
-    setInstallForm({ companyId: companies[0]?.id || '', plan: addon.pricingModel === 'FREE' ? 'Free' : 'Professional' });
+    setInstallForm({ companyId: companyData[0]?.id || '', plan: addon.pricingModel === 'FREE' ? 'Free' : 'Professional' });
   }
 
   async function submitInstall() {
@@ -176,7 +190,7 @@ export default function MarketplacePage() {
       <Grid size={12}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { md: 'center' } }}>
           <Box><Typography variant="h3">App Marketplace</Typography><Typography color="text.secondary">Extend the ERP with add-ons, secure API apps, integrations, and event webhooks.</Typography></Box>
-          <Stack direction="row" spacing={1}><Button startIcon={<ReloadOutlined />} onClick={loadData} disabled={loading}>Refresh</Button><Button variant="contained" startIcon={<PlusOutlined />} onClick={() => setApiOpen(true)}>Create API App</Button></Stack>
+          <Stack direction="row" spacing={1}><Button startIcon={<ReloadOutlined />} onClick={() => loadTabData(tab, true)} disabled={loading}>Refresh</Button><Button variant="contained" startIcon={<PlusOutlined />} onClick={async () => { await ensureCompanies(); setApiOpen(true); }}>Create API App</Button></Stack>
         </Stack>
       </Grid>
       <Grid size={12}>
@@ -187,8 +201,8 @@ export default function MarketplacePage() {
           {tab === 0 && <Overview dashboard={dashboard} installations={installations} webhooks={webhooks} onBrowse={() => setTab(1)} />}
           {tab === 1 && <Catalog addons={visibleCatalog} category={category} setCategory={setCategory} search={search} setSearch={setSearch} onInstall={beginInstall} />}
           {tab === 2 && <Installed installations={installations} onStatus={(entry, status) => run(() => api(`/marketplace/installations/${entry.id}`, token, { method: 'PATCH', body: JSON.stringify({ status }) }), `${entry.addon.name} updated`)} onRemove={(entry) => run(() => api(`/marketplace/installations/${entry.id}`, token, { method: 'DELETE' }), `${entry.addon.name} uninstalled`)} />}
-          {tab === 3 && <ApiApps apps={apiApps} onCreate={() => setApiOpen(true)} onRotate={rotateSecret} onRevoke={(app) => run(() => api(`/marketplace/api-apps/${app.id}`, token, { method: 'DELETE' }), `${app.name} revoked`)} />}
-          {tab === 4 && <Webhooks webhooks={webhooks} onCreate={() => setWebhookOpen(true)} onTest={(hook) => run(() => api(`/marketplace/webhooks/${hook.id}/test`, token, { method: 'POST' }), `Test event sent to ${hook.name}`)} onStatus={(hook, status) => run(() => api(`/marketplace/webhooks/${hook.id}/status`, token, { method: 'PATCH', body: JSON.stringify({ status }) }), `${hook.name} ${status.toLowerCase()}`)} onDelete={(hook) => run(() => api(`/marketplace/webhooks/${hook.id}`, token, { method: 'DELETE' }), `${hook.name} deleted`)} />}
+          {tab === 3 && <ApiApps apps={apiApps} onCreate={async () => { await ensureCompanies(); setApiOpen(true); }} onRotate={rotateSecret} onRevoke={(app) => run(() => api(`/marketplace/api-apps/${app.id}`, token, { method: 'DELETE' }), `${app.name} revoked`)} />}
+          {tab === 4 && <Webhooks webhooks={webhooks} onCreate={async () => { await ensureCompanies(); setWebhookOpen(true); }} onTest={(hook) => run(() => api(`/marketplace/webhooks/${hook.id}/test`, token, { method: 'POST' }), `Test event sent to ${hook.name}`)} onStatus={(hook, status) => run(() => api(`/marketplace/webhooks/${hook.id}/status`, token, { method: 'PATCH', body: JSON.stringify({ status }) }), `${hook.name} ${status.toLowerCase()}`)} onDelete={(hook) => run(() => api(`/marketplace/webhooks/${hook.id}`, token, { method: 'DELETE' }), `${hook.name} deleted`)} />}
         </Box>
       </Grid>
 
@@ -234,15 +248,18 @@ function Catalog({ addons, category, setCategory, search, setSearch, onInstall }
 }
 
 function Installed({ installations, onStatus, onRemove }) {
-  return <TableContainer><Table><TableHead><TableRow><TableCell>Add-on</TableCell><TableCell>Company</TableCell><TableCell>Plan</TableCell><TableCell>Status</TableCell><TableCell>Billing / Trial</TableCell><TableCell align="right">Actions</TableCell></TableRow></TableHead><TableBody>{installations.map((entry) => <TableRow key={entry.id}><TableCell><Typography fontWeight={600}>{entry.addon.name}</Typography><Typography variant="caption" color="text.secondary">v{entry.addon.version} by {entry.addon.publisher}</Typography></TableCell><TableCell>{entry.company?.name || 'All companies'}</TableCell><TableCell>{entry.plan}</TableCell><TableCell><StatusChip status={entry.status} /></TableCell><TableCell>{entry.status === 'TRIAL' ? `Trial ends ${date(entry.trialEndsAt)}` : entry.nextBillingAt ? date(entry.nextBillingAt) : 'No billing'}</TableCell><TableCell align="right"><Button size="small" startIcon={entry.status === 'SUSPENDED' ? <PlayCircleOutlined /> : <PauseCircleOutlined />} onClick={() => onStatus(entry, entry.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED')}>{entry.status === 'SUSPENDED' ? 'Resume' : 'Suspend'}</Button><Button size="small" color="error" startIcon={<DeleteOutlined />} onClick={() => onRemove(entry)}>Uninstall</Button></TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  const rows = installations.map((entry) => ({ ...entry, addonText: `${entry.addon.name} | v${entry.addon.version} by ${entry.addon.publisher}`, companyName: entry.company?.name || 'All companies', billingText: entry.status === 'TRIAL' ? `Trial ends ${date(entry.trialEndsAt)}` : entry.nextBillingAt ? date(entry.nextBillingAt) : 'No billing' }));
+  return <CommonDataGrid title="Installed Add-ons" rows={rows} columns={[{ field: 'addonText', headerName: 'Add-on', flex: 1.3, minWidth: 240 }, { field: 'companyName', headerName: 'Company', flex: 1, minWidth: 160 }, { field: 'plan', headerName: 'Plan', width: 140 }, { field: 'status', headerName: 'Status', width: 130, renderCell: ({ value }) => <StatusChip status={value} /> }, { field: 'billingText', headerName: 'Billing / Trial', flex: 1, minWidth: 170 }, { field: 'actions', headerName: 'Actions', width: 230, sortable: false, filterable: false, renderCell: ({ row }) => <Stack direction="row" spacing={0.5}><Button size="small" startIcon={row.status === 'SUSPENDED' ? <PlayCircleOutlined /> : <PauseCircleOutlined />} onClick={() => onStatus(row, row.status === 'SUSPENDED' ? 'ACTIVE' : 'SUSPENDED')}>{row.status === 'SUSPENDED' ? 'Resume' : 'Suspend'}</Button><Button size="small" color="error" startIcon={<DeleteOutlined />} onClick={() => onRemove(row)}>Uninstall</Button></Stack> }]} searchPlaceholder="Search add-on, publisher, company, or plan" dateField="trialEndsAt" selectFilters={[{ field: 'companyName', label: 'Company' }, { field: 'plan', label: 'Plan' }, { field: 'status', label: 'Status' }]} fileName="installed-addons" />;
 }
 
 function ApiApps({ apps, onCreate, onRotate, onRevoke }) {
-  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}><Box><Typography variant="h5">API Applications</Typography><Typography color="text.secondary">Scoped credentials for external applications and integrations.</Typography></Box><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>Create App</Button></Stack><TableContainer><Table><TableHead><TableRow><TableCell>Application</TableCell><TableCell>Client ID</TableCell><TableCell>Permissions</TableCell><TableCell>Last Used</TableCell><TableCell>Status</TableCell><TableCell align="right">Actions</TableCell></TableRow></TableHead><TableBody>{apps.map((app) => <TableRow key={app.id}><TableCell><Typography fontWeight={600}>{app.name}</Typography><Typography variant="caption">{app.company?.name || 'All companies'}</Typography></TableCell><TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace' }}>{app.clientId}</Typography><Typography variant="caption" color="text.secondary">{app.secretPreview}</Typography></TableCell><TableCell>{(app.scopes || []).map((scope) => <Chip key={scope} size="small" label={scope} sx={{ mr: 0.5, mb: 0.5 }} />)}</TableCell><TableCell>{date(app.lastUsedAt)}</TableCell><TableCell><StatusChip status={app.status} /></TableCell><TableCell align="right"><Button size="small" startIcon={<KeyOutlined />} disabled={app.status === 'REVOKED'} onClick={() => onRotate(app)}>Rotate</Button><Button size="small" color="error" disabled={app.status === 'REVOKED'} onClick={() => onRevoke(app)}>Revoke</Button></TableCell></TableRow>)}</TableBody></Table></TableContainer></Stack>;
+  const rows = apps.map((app) => ({ ...app, applicationText: `${app.name} | ${app.company?.name || 'All companies'}`, scopesText: (app.scopes || []).join(', '), lastUsedText: date(app.lastUsedAt) }));
+  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}><Box><Typography variant="h5">API Applications</Typography><Typography color="text.secondary">Scoped credentials for external applications and integrations.</Typography></Box><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>Create App</Button></Stack><CommonDataGrid title="API Applications" rows={rows} columns={[{ field: 'applicationText', headerName: 'Application', flex: 1.2, minWidth: 220 }, { field: 'clientId', headerName: 'Client ID', flex: 1, minWidth: 180 }, { field: 'scopesText', headerName: 'Permissions', flex: 1.3, minWidth: 240 }, { field: 'lastUsedText', headerName: 'Last Used', width: 130 }, { field: 'status', headerName: 'Status', width: 130, renderCell: ({ value }) => <StatusChip status={value} /> }, { field: 'actions', headerName: 'Actions', width: 180, sortable: false, filterable: false, renderCell: ({ row }) => <Stack direction="row" spacing={0.5}><Button size="small" startIcon={<KeyOutlined />} disabled={row.status === 'REVOKED'} onClick={() => onRotate(row)}>Rotate</Button><Button size="small" color="error" disabled={row.status === 'REVOKED'} onClick={() => onRevoke(row)}>Revoke</Button></Stack> }]} searchPlaceholder="Search app, client ID, company, or scope" dateField="lastUsedAt" selectFilters={[{ field: 'status', label: 'Status' }, { field: 'scopesText', label: 'Permissions' }]} fileName="api-apps" /></Stack>;
 }
 
 function Webhooks({ webhooks, onCreate, onTest, onStatus, onDelete }) {
-  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}><Box><Typography variant="h5">Event Webhooks</Typography><Typography color="text.secondary">Send signed ERP events to external systems and monitor delivery health.</Typography></Box><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>Add Endpoint</Button></Stack><TableContainer><Table><TableHead><TableRow><TableCell>Endpoint</TableCell><TableCell>Events</TableCell><TableCell>Deliveries</TableCell><TableCell>Last Result</TableCell><TableCell>Status</TableCell><TableCell align="right">Actions</TableCell></TableRow></TableHead><TableBody>{webhooks.map((hook) => <TableRow key={hook.id}><TableCell><Typography fontWeight={600}>{hook.name}</Typography><Typography variant="caption" color="text.secondary">{hook.url}</Typography></TableCell><TableCell>{(hook.events || []).map((event) => <Chip key={event} size="small" label={event} sx={{ mr: 0.5, mb: 0.5 }} />)}</TableCell><TableCell><Typography color="success.main">{hook.successCount} successful</Typography><Typography variant="caption" color="error">{hook.failureCount} failed</Typography></TableCell><TableCell>{hook.lastStatusCode || '-'}<Typography variant="caption" display="block" color="text.secondary">{date(hook.lastDeliveryAt)}</Typography></TableCell><TableCell><StatusChip status={hook.status} /></TableCell><TableCell align="right"><Button size="small" onClick={() => onTest(hook)} disabled={hook.status === 'PAUSED'}>Test</Button><Button size="small" onClick={() => onStatus(hook, hook.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED')}>{hook.status === 'PAUSED' ? 'Resume' : 'Pause'}</Button><Button size="small" color="error" onClick={() => onDelete(hook)}><DeleteOutlined /></Button></TableCell></TableRow>)}</TableBody></Table></TableContainer></Stack>;
+  const rows = webhooks.map((hook) => ({ ...hook, endpointText: `${hook.name} | ${hook.url}`, eventsText: (hook.events || []).join(', '), deliveriesText: `${hook.successCount} successful / ${hook.failureCount} failed`, lastResultText: `${hook.lastStatusCode || '-'} | ${date(hook.lastDeliveryAt)}` }));
+  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}><Box><Typography variant="h5">Event Webhooks</Typography><Typography color="text.secondary">Send signed ERP events to external systems and monitor delivery health.</Typography></Box><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>Add Endpoint</Button></Stack><CommonDataGrid title="Event Webhooks" rows={rows} columns={[{ field: 'endpointText', headerName: 'Endpoint', flex: 1.3, minWidth: 260 }, { field: 'eventsText', headerName: 'Events', flex: 1.2, minWidth: 240 }, { field: 'deliveriesText', headerName: 'Deliveries', width: 190 }, { field: 'lastResultText', headerName: 'Last Result', width: 170 }, { field: 'status', headerName: 'Status', width: 130, renderCell: ({ value }) => <StatusChip status={value} /> }, { field: 'actions', headerName: 'Actions', width: 210, sortable: false, filterable: false, renderCell: ({ row }) => <Stack direction="row" spacing={0.5}><Button size="small" onClick={() => onTest(row)} disabled={row.status === 'PAUSED'}>Test</Button><Button size="small" onClick={() => onStatus(row, row.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED')}>{row.status === 'PAUSED' ? 'Resume' : 'Pause'}</Button><Button size="small" color="error" onClick={() => onDelete(row)}><DeleteOutlined /></Button></Stack> }]} searchPlaceholder="Search webhook, URL, event, or status" dateField="lastDeliveryAt" selectFilters={[{ field: 'status', label: 'Status' }, { field: 'eventsText', label: 'Events' }]} fileName="webhooks" /></Stack>;
 }
 
 function StatusChip({ status }) {

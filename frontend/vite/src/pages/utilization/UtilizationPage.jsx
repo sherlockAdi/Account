@@ -5,20 +5,14 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import LinearProgress from '@mui/material/LinearProgress';
 import Stack from '@mui/material/Stack';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 
 import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import { formatDate } from 'utils/dateFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
@@ -140,25 +134,34 @@ function LineUsage({ line }) {
 }
 
 function BudgetUtilizationTable({ budgets }) {
+  const rows = budgets.map((budget) => ({
+    ...budget,
+    budgetName: `${budget.name} ${budget.code} / ${budget.fiscalYear}`,
+    fromDate: budget.periodFrom,
+    period: `${formatDate(budget.periodFrom)} to ${formatDate(budget.periodTo)}`,
+    allocated: Number(budget.totalAmount || 0),
+    actual: Number(budget.actualAmount || 0),
+    remaining: Number(budget.remainingAmount || 0),
+    utilization: Number(budget.utilizationPercent || 0)
+  }));
+  const columns = [
+    { field: 'budgetName', headerName: 'Budget', flex: 1.2, minWidth: 240 },
+    { field: 'period', headerName: 'Period', flex: 0.9, minWidth: 190 },
+    { field: 'status', headerName: 'Status', flex: 0.7, minWidth: 130 },
+    { field: 'allocated', headerName: 'Allocated', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => money(value) },
+    { field: 'actual', headerName: 'Actual', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => money(value) },
+    { field: 'remaining', headerName: 'Remaining', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => money(value) },
+    { field: 'utilization', headerName: 'Utilization %', type: 'number', flex: 0.8, minWidth: 150, valueFormatter: (value) => `${Number(value || 0).toFixed(2)}%` }
+  ];
   return (
-    <TableContainer sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
-      <Table size="small" sx={{ minWidth: 980 }}>
-        <TableHead><TableRow><TableCell>Budget</TableCell><TableCell>Period</TableCell><TableCell>Status</TableCell><TableCell align="right">Allocated</TableCell><TableCell align="right">Actual</TableCell><TableCell align="right">Remaining</TableCell><TableCell>Utilization</TableCell></TableRow></TableHead>
-        <TableBody>
-          {budgets.map((budget) => (
-            <TableRow key={budget.id} hover>
-              <TableCell><Typography fontWeight={600}>{budget.name}</Typography><Typography variant="caption" color="text.secondary">{budget.code} / {budget.fiscalYear}</Typography></TableCell>
-              <TableCell>{formatDate(budget.periodFrom)} to {formatDate(budget.periodTo)}</TableCell>
-              <TableCell><Chip size="small" color={budget.status === 'ACTIVE' ? 'success' : budget.status === 'DRAFT' ? 'warning' : 'default'} label={budget.status} /></TableCell>
-              <TableCell align="right">{money(budget.totalAmount)}</TableCell>
-              <TableCell align="right">{money(budget.actualAmount)}</TableCell>
-              <TableCell align="right">{money(budget.remainingAmount)}</TableCell>
-              <TableCell sx={{ minWidth: 180 }}><Typography variant="caption">{Number(budget.utilizationPercent || 0).toFixed(2)}%</Typography><LinearProgress variant="determinate" value={Math.min(100, Number(budget.utilizationPercent || 0))} sx={{ mt: 0.5, height: 6, borderRadius: 1 }} /></TableCell>
-            </TableRow>
-          ))}
-          {!budgets.length && <TableRow><TableCell colSpan={7} align="center">No utilization data available.</TableCell></TableRow>}
-        </TableBody>
-      </Table>
-    </TableContainer>
+    <CommonDataGrid
+      title="Budget Utilization"
+      rows={rows}
+      columns={columns}
+      fileName="budget-utilization"
+      searchPlaceholder="Search budgets"
+      dateField="fromDate"
+      selectFilters={[{ field: 'status', label: 'Status', options: Array.from(new Set(rows.map((row) => row.status))).map((status) => ({ value: status, label: status })) }]}
+    />
   );
 }

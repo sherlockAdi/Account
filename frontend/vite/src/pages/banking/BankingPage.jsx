@@ -14,12 +14,6 @@ import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -28,6 +22,7 @@ import CheckCircleOutlined from '@ant-design/icons/CheckCircleOutlined';
 import CreditCardOutlined from '@ant-design/icons/CreditCardOutlined';
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 import { formatDate, todayIso } from 'utils/dateFormat';
 
@@ -68,6 +63,8 @@ export default function BankingPage() {
   });
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [referenceLoaded, setReferenceLoaded] = useState(false);
 
   const bankAccounts = useMemo(() => accounts.filter((account) => account.ledgerType === 'BANK'), [accounts]);
   const cashAccounts = useMemo(() => accounts.filter((account) => account.ledgerType === 'CASH'), [accounts]);
@@ -77,23 +74,44 @@ export default function BankingPage() {
     [transactions, selectedBank]
   );
 
-  async function loadData() {
-    const [dashboardData, accountData, ledgerData] = await Promise.all([
-      api('/banking/dashboard'), api('/banking/accounts'), api('/accounting/ledgers')
-    ]);
-    const [transactionData, chequeData, adviceData] = await Promise.all([
-      api('/banking/transactions'), api('/banking/cheques'), api('/banking/payment-advices')
-    ]);
-    setDashboard(dashboardData);
+  async function loadAccounts() {
+    const accountData = await api('/banking/accounts');
     setAccounts(accountData);
-    setTransactions(transactionData);
-    setCheques(chequeData);
-    setAdvices(adviceData);
-    setLedgers(ledgerData);
     setSelectedBank((current) => current || accountData.find((account) => account.ledgerType === 'BANK')?.id || '');
+    return accountData;
   }
 
-  useEffect(() => { loadData().catch((loadError) => setError(loadError.message)); }, []);
+  async function ensureReferenceData() {
+    if (referenceLoaded && accounts.length && ledgers.length) return { accountData: accounts, ledgerData: ledgers };
+    const [accountData, ledgerData] = await Promise.all([
+      accounts.length ? Promise.resolve(accounts) : api('/banking/accounts'),
+      ledgers.length ? Promise.resolve(ledgers) : api('/accounting/ledgers')
+    ]);
+    setAccounts(accountData);
+    setLedgers(ledgerData);
+    setReferenceLoaded(true);
+    setSelectedBank((current) => current || accountData.find((account) => account.ledgerType === 'BANK')?.id || '');
+    return { accountData, ledgerData };
+  }
+
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
+    try {
+      setError('');
+      if (tabIndex === 0) setDashboard(await api('/banking/dashboard'));
+      if (tabIndex === 1 || tabIndex === 2) {
+        await loadAccounts();
+        setTransactions(await api('/banking/transactions'));
+      }
+      if (tabIndex === 3) setCheques(await api('/banking/cheques'));
+      if (tabIndex === 4) setAdvices(await api('/banking/payment-advices'));
+      setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
+    } catch (loadError) {
+      setError(loadError.message);
+    }
+  }
+
+  useEffect(() => { loadTabData(tab); }, [tab]);
 
   async function save(action, success, close) {
     try {
@@ -102,7 +120,7 @@ export default function BankingPage() {
       await action();
       close();
       setMessage(success);
-      await loadData();
+      await loadTabData(tab, true);
     } catch (saveError) {
       setError(saveError.message);
     }
@@ -114,17 +132,23 @@ export default function BankingPage() {
     setReconcileOpen(true);
   }
 
-  function openCheque() {
+  async function openCheque() {
+    const { accountData, ledgerData } = await ensureReferenceData();
+    const freshBankAccounts = accountData.filter((account) => account.ledgerType === 'BANK');
+    const freshPartyLedgers = ledgerData.filter((ledger) => ledger.ledgerType !== 'BANK' && ledger.ledgerType !== 'CASH');
     setChequeForm({
-      bankLedgerId: bankAccounts[0]?.id || '', partyLedgerId: partyLedgers[0]?.id || '',
+      bankLedgerId: freshBankAccounts[0]?.id || '', partyLedgerId: freshPartyLedgers[0]?.id || '',
       chequeNo: '', chequeDate: today(), amount: 0, direction: 'ISSUED', payeeName: '', notes: ''
     });
     setChequeOpen(true);
   }
 
-  function openAdvice() {
+  async function openAdvice() {
+    const { accountData, ledgerData } = await ensureReferenceData();
+    const freshBankAccounts = accountData.filter((account) => account.ledgerType === 'BANK');
+    const freshPartyLedgers = ledgerData.filter((ledger) => ledger.ledgerType !== 'BANK' && ledger.ledgerType !== 'CASH');
     setAdviceForm({
-      bankLedgerId: bankAccounts[0]?.id || '', beneficiaryLedgerId: partyLedgers[0]?.id || '',
+      bankLedgerId: freshBankAccounts[0]?.id || '', beneficiaryLedgerId: freshPartyLedgers[0]?.id || '',
       adviceNo: `ADV-${Date.now().toString().slice(-6)}`, adviceDate: today(), paymentDate: today(),
       amount: 0, paymentMode: 'NEFT', bankReference: '', narration: ''
     });
@@ -228,23 +252,66 @@ function Books({ accounts, transactions, selectedBank, setSelectedBank, bankAcco
 }
 
 function AccountTable({ accounts }) {
-  return <TableContainer><Table size="small"><TableHead><TableRow><TableCell>Account</TableCell><TableCell>Type</TableCell><TableCell>Bank Details</TableCell><TableCell align="right">Book Balance</TableCell></TableRow></TableHead><TableBody>{accounts.map((account) => <TableRow key={account.id}><TableCell>{account.name}<br /><Typography variant="caption">{account.code}</Typography></TableCell><TableCell><Chip size="small" label={account.ledgerType} color={account.ledgerType === 'BANK' ? 'primary' : 'default'} /></TableCell><TableCell>{account.bankName || '-'}{account.bankAccountNo && <><br />A/c {account.bankAccountNo}</>}</TableCell><TableCell align="right"><strong>{money(account.balance)}</strong></TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  const rows = accounts.map((account) => ({ ...account, accountText: `${account.name} ${account.code}`, bankDetails: `${account.bankName || '-'}${account.bankAccountNo ? ` A/c ${account.bankAccountNo}` : ''}`, balanceAmount: Number(account.balance || 0) }));
+  const columns = [
+    { field: 'accountText', headerName: 'Account', flex: 1, minWidth: 220 },
+    { field: 'ledgerType', headerName: 'Type', flex: 0.7, minWidth: 130 },
+    { field: 'bankDetails', headerName: 'Bank Details', flex: 1, minWidth: 220 },
+    { field: 'balanceAmount', headerName: 'Book Balance', type: 'number', flex: 0.8, minWidth: 160, valueFormatter: (value) => money(value) }
+  ];
+  return <CommonDataGrid title="Account Balances" rows={rows} columns={columns} fileName="bank-accounts" searchPlaceholder="Search accounts" height={360} selectFilters={[{ field: 'ledgerType', label: 'Type', options: [{ value: 'BANK', label: 'BANK' }, { value: 'CASH', label: 'CASH' }] }]} />;
 }
 
 function Reconciliation({ transactions, bankAccounts, selectedBank, setSelectedBank, onReconcile }) {
-  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}><Box><Typography variant="h5">Bank Reconciliation</Typography><Typography color="text.secondary">Match book transactions with the bank statement.</Typography></Box><TextField select size="small" label="Bank Account" value={selectedBank} onChange={(e) => setSelectedBank(e.target.value)} sx={{ minWidth: 240 }}>{bankAccounts.map((account) => <MenuItem key={account.id} value={account.id}>{account.name}</MenuItem>)}</TextField></Stack><TableContainer><Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Voucher</TableCell><TableCell>Counterparty</TableCell><TableCell align="right">Deposit</TableCell><TableCell align="right">Withdrawal</TableCell><TableCell>Status</TableCell><TableCell align="right">Action</TableCell></TableRow></TableHead><TableBody>{transactions.map((row) => <TableRow key={row.voucherLineId}><TableCell>{formatDate(row.date)}</TableCell><TableCell>{row.voucherNo}<br /><Typography variant="caption">{row.narration}</Typography></TableCell><TableCell>{row.counterparty}</TableCell><TableCell align="right">{row.deposit ? money(row.deposit) : '-'}</TableCell><TableCell align="right">{row.withdrawal ? money(row.withdrawal) : '-'}</TableCell><TableCell><Chip size="small" color={row.reconciliation ? 'success' : 'warning'} label={row.reconciliation ? `Cleared ${formatDate(row.reconciliation.clearedDate)}` : 'Unreconciled'} /></TableCell><TableCell align="right"><Button size="small" startIcon={<CheckCircleOutlined />} disabled={Boolean(row.reconciliation)} onClick={() => onReconcile(row)}>Reconcile</Button></TableCell></TableRow>)}</TableBody></Table></TableContainer></Stack>;
+  const rows = transactions.map((row) => ({ ...row, id: row.voucherLineId, depositAmount: Number(row.deposit || 0), withdrawalAmount: Number(row.withdrawal || 0), statusText: row.reconciliation ? 'Reconciled' : 'Unreconciled' }));
+  const columns = transactionColumns();
+  columns.push({ field: 'actions', headerName: 'Action', sortable: false, filterable: false, exportable: false, flex: 0.7, minWidth: 140, renderCell: (params) => <Button size="small" startIcon={<CheckCircleOutlined />} disabled={Boolean(params.row.reconciliation)} onClick={() => onReconcile(params.row)}>Reconcile</Button> });
+  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}><Box><Typography variant="h5">Bank Reconciliation</Typography><Typography color="text.secondary">Match book transactions with the bank statement.</Typography></Box><TextField select size="small" label="Bank Account" value={selectedBank} onChange={(e) => setSelectedBank(e.target.value)} sx={{ minWidth: 240 }}>{bankAccounts.map((account) => <MenuItem key={account.id} value={account.id}>{account.name}</MenuItem>)}</TextField></Stack><CommonDataGrid title="Bank Reconciliation" rows={rows} columns={columns} fileName="bank-reconciliation" searchPlaceholder="Search transactions" dateField="date" selectFilters={[{ field: 'statusText', label: 'Status', options: [{ value: 'Reconciled', label: 'Reconciled' }, { value: 'Unreconciled', label: 'Unreconciled' }] }]} /></Stack>;
 }
 
 function TransactionTable({ transactions }) {
-  return <TableContainer><Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Voucher</TableCell><TableCell>Particulars</TableCell><TableCell align="right">Deposit</TableCell><TableCell align="right">Withdrawal</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{transactions.map((row) => <TableRow key={row.voucherLineId}><TableCell>{formatDate(row.date)}</TableCell><TableCell>{row.voucherNo}</TableCell><TableCell>{row.counterparty}<br /><Typography variant="caption">{row.narration}</Typography></TableCell><TableCell align="right">{row.deposit ? money(row.deposit) : '-'}</TableCell><TableCell align="right">{row.withdrawal ? money(row.withdrawal) : '-'}</TableCell><TableCell><Chip size="small" color={row.reconciliation ? 'success' : 'warning'} label={row.reconciliation ? 'Reconciled' : 'Pending'} /></TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  const rows = transactions.map((row) => ({ ...row, id: row.voucherLineId, depositAmount: Number(row.deposit || 0), withdrawalAmount: Number(row.withdrawal || 0), statusText: row.reconciliation ? 'Reconciled' : 'Pending' }));
+  return <CommonDataGrid title="Transactions" rows={rows} columns={transactionColumns()} fileName="bank-transactions" searchPlaceholder="Search transactions" dateField="date" selectFilters={[{ field: 'statusText', label: 'Status', options: [{ value: 'Reconciled', label: 'Reconciled' }, { value: 'Pending', label: 'Pending' }] }]} />;
 }
 
 function ChequeRegister({ cheques, onStatus }) {
-  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Cheque</TableCell><TableCell>Bank / Party</TableCell><TableCell>Direction</TableCell><TableCell align="right">Amount</TableCell><TableCell>Status</TableCell><TableCell align="right">Action</TableCell></TableRow></TableHead><TableBody>{cheques.map((cheque) => <TableRow key={cheque.id}><TableCell>{cheque.chequeNo}<br />{formatDate(cheque.chequeDate)}</TableCell><TableCell>{cheque.bankLedger.name}<br />{cheque.partyLedger?.name || cheque.payeeName || '-'}</TableCell><TableCell>{cheque.direction}</TableCell><TableCell align="right">{money(cheque.amount)}</TableCell><TableCell><StatusChip status={cheque.status} /></TableCell><TableCell align="right"><Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>{cheque.status === 'PENDING' && <Button size="small" onClick={() => onStatus(cheque, cheque.direction === 'RECEIVED' ? 'DEPOSITED' : 'CLEARED')}>{cheque.direction === 'RECEIVED' ? 'Deposit' : 'Clear'}</Button>}{cheque.status === 'DEPOSITED' && <Button size="small" onClick={() => onStatus(cheque, 'CLEARED')}>Clear</Button>}{['PENDING', 'DEPOSITED'].includes(cheque.status) && <Button size="small" color="error" onClick={() => onStatus(cheque, 'BOUNCED')}>Bounce</Button>}</Stack></TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  const rows = cheques.map((cheque) => ({ ...cheque, date: cheque.chequeDate, chequeText: cheque.chequeNo, bankParty: `${cheque.bankLedger.name} / ${cheque.partyLedger?.name || cheque.payeeName || '-'}`, amountValue: Number(cheque.amount || 0) }));
+  const columns = [
+    { field: 'date', headerName: 'Date', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatDate(value) },
+    { field: 'chequeText', headerName: 'Cheque', flex: 0.8, minWidth: 150 },
+    { field: 'bankParty', headerName: 'Bank / Party', flex: 1.3, minWidth: 260 },
+    { field: 'direction', headerName: 'Direction', flex: 0.7, minWidth: 130 },
+    { field: 'amountValue', headerName: 'Amount', type: 'number', flex: 0.8, minWidth: 150, valueFormatter: (value) => money(value) },
+    { field: 'status', headerName: 'Status', flex: 0.7, minWidth: 130 },
+    { field: 'actions', headerName: 'Action', sortable: false, filterable: false, exportable: false, flex: 1.1, minWidth: 220, renderCell: (params) => <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>{params.row.status === 'PENDING' && <Button size="small" onClick={() => onStatus(params.row, params.row.direction === 'RECEIVED' ? 'DEPOSITED' : 'CLEARED')}>{params.row.direction === 'RECEIVED' ? 'Deposit' : 'Clear'}</Button>}{params.row.status === 'DEPOSITED' && <Button size="small" onClick={() => onStatus(params.row, 'CLEARED')}>Clear</Button>}{['PENDING', 'DEPOSITED'].includes(params.row.status) && <Button size="small" color="error" onClick={() => onStatus(params.row, 'BOUNCED')}>Bounce</Button>}</Stack> }
+  ];
+  return <Box sx={{ p: 2.5 }}><CommonDataGrid title="Cheque Register" rows={rows} columns={columns} fileName="cheque-register" searchPlaceholder="Search cheques" dateField="date" selectFilters={[{ field: 'direction', label: 'Direction', options: [{ value: 'ISSUED', label: 'ISSUED' }, { value: 'RECEIVED', label: 'RECEIVED' }] }, { field: 'status', label: 'Status', options: Array.from(new Set(rows.map((row) => row.status))).map((status) => ({ value: status, label: status })) }]} /></Box>;
 }
 
 function AdviceTable({ advices }) {
-  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Advice</TableCell><TableCell>Payment Date</TableCell><TableCell>Beneficiary</TableCell><TableCell>Bank / Mode</TableCell><TableCell>Reference</TableCell><TableCell align="right">Amount</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{advices.map((advice) => <TableRow key={advice.id}><TableCell>{advice.adviceNo}<br />{formatDate(advice.adviceDate)}</TableCell><TableCell>{formatDate(advice.paymentDate)}</TableCell><TableCell>{advice.beneficiaryLedger.name}</TableCell><TableCell>{advice.bankLedger.name}<br />{advice.paymentMode}</TableCell><TableCell>{advice.bankReference || '-'}</TableCell><TableCell align="right">{money(advice.amount)}</TableCell><TableCell><StatusChip status={advice.status} /></TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  const rows = advices.map((advice) => ({ ...advice, date: advice.paymentDate, adviceText: `${advice.adviceNo} ${formatDate(advice.adviceDate)}`, beneficiaryName: advice.beneficiaryLedger.name, bankMode: `${advice.bankLedger.name} / ${advice.paymentMode}`, referenceText: advice.bankReference || '-', amountValue: Number(advice.amount || 0) }));
+  const columns = [
+    { field: 'adviceText', headerName: 'Advice', flex: 1, minWidth: 190 },
+    { field: 'date', headerName: 'Payment Date', flex: 0.8, minWidth: 150, valueFormatter: (value) => formatDate(value) },
+    { field: 'beneficiaryName', headerName: 'Beneficiary', flex: 1, minWidth: 190 },
+    { field: 'bankMode', headerName: 'Bank / Mode', flex: 1.1, minWidth: 220 },
+    { field: 'referenceText', headerName: 'Reference', flex: 0.8, minWidth: 150 },
+    { field: 'amountValue', headerName: 'Amount', type: 'number', flex: 0.8, minWidth: 150, valueFormatter: (value) => money(value) },
+    { field: 'status', headerName: 'Status', flex: 0.7, minWidth: 130 }
+  ];
+  return <Box sx={{ p: 2.5 }}><CommonDataGrid title="Payment Advice" rows={rows} columns={columns} fileName="payment-advice" searchPlaceholder="Search advice" dateField="date" selectFilters={[{ field: 'status', label: 'Status', options: Array.from(new Set(rows.map((row) => row.status))).map((status) => ({ value: status, label: status })) }]} /></Box>;
+}
+
+function transactionColumns() {
+  return [
+    { field: 'date', headerName: 'Date', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatDate(value) },
+    { field: 'voucherNo', headerName: 'Voucher', flex: 0.8, minWidth: 140 },
+    { field: 'counterparty', headerName: 'Counterparty', flex: 1, minWidth: 190 },
+    { field: 'narration', headerName: 'Narration', flex: 1.2, minWidth: 240, valueGetter: (value) => value || '-' },
+    { field: 'depositAmount', headerName: 'Deposit', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => value ? money(value) : '-' },
+    { field: 'withdrawalAmount', headerName: 'Withdrawal', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => value ? money(value) : '-' },
+    { field: 'statusText', headerName: 'Status', flex: 0.7, minWidth: 130 }
+  ];
 }
 
 function StatusChip({ status }) {

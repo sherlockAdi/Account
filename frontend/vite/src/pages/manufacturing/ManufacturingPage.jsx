@@ -15,12 +15,6 @@ import LinearProgress from '@mui/material/LinearProgress';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -28,6 +22,7 @@ import Typography from '@mui/material/Typography';
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import ToolOutlined from '@ant-design/icons/ToolOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 import { formatDate, todayIso } from 'utils/dateFormat';
 
@@ -60,6 +55,9 @@ export default function ManufacturingPage() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [itemsLoaded, setItemsLoaded] = useState(false);
+  const [companiesLoaded, setCompaniesLoaded] = useState(false);
   const [bomForm, setBomForm] = useState({
     name: '',
     code: '',
@@ -102,24 +100,43 @@ export default function ManufacturingPage() {
     [orders]
   );
 
-  async function loadData() {
-    const [dashboardData, bomData, orderData, itemData, companyData] = await Promise.all([
-      api('/manufacturing/dashboard'),
-      api('/manufacturing/boms'),
-      api('/manufacturing/orders'),
-      api('/inventory/items'),
-      api('/companies')
-    ]);
-    setDashboard(dashboardData);
-    setBoms(bomData);
-    setOrders(orderData);
+  async function ensureItems() {
+    if (itemsLoaded && items.length) return items;
+    const itemData = await api('/inventory/items');
     setItems(itemData);
-    setCompanies(companyData);
+    setItemsLoaded(true);
+    return itemData;
   }
 
-  useEffect(() => {
-    loadData().catch((loadError) => setError(loadError.message));
-  }, []);
+  async function ensureCompanies() {
+    if (companiesLoaded && companies.length) return companies;
+    const companyData = await api('/companies');
+    setCompanies(companyData);
+    setCompaniesLoaded(true);
+    return companyData;
+  }
+
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
+    try {
+      setError('');
+      if (tabIndex === 0) {
+        const [dashboardData, orderData] = await Promise.all([
+          api('/manufacturing/dashboard'),
+          api('/manufacturing/orders')
+        ]);
+        setDashboard(dashboardData);
+        setOrders(orderData);
+      }
+      if (tabIndex === 1) setBoms(await api('/manufacturing/boms'));
+      if (tabIndex === 2 || tabIndex === 3) setOrders(await api('/manufacturing/orders'));
+      setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
+    } catch (loadError) {
+      setError(loadError.message);
+    }
+  }
+
+  useEffect(() => { loadTabData(tab); }, [tab]);
 
   async function save(action, success, close) {
     try {
@@ -128,31 +145,38 @@ export default function ManufacturingPage() {
       await action();
       close();
       setMessage(success);
-      await loadData();
+      await loadTabData(tab, true);
     } catch (saveError) {
       setError(saveError.message);
     }
   }
 
-  function openBom() {
+  async function openBom() {
+    const itemData = await ensureItems();
     setBomForm({
       name: '',
       code: '',
-      finishedItemId: items[0]?.id || '',
+      finishedItemId: itemData[0]?.id || '',
       version: 1,
       outputQuantity: 1,
       effectiveFrom: today(),
       effectiveTo: '',
       notes: '',
-      components: [{ itemId: items[1]?.id || items[0]?.id || '', quantity: 1, wastagePercent: 0 }]
+      components: [{ itemId: itemData[1]?.id || itemData[0]?.id || '', quantity: 1, wastagePercent: 0 }]
     });
     setBomOpen(true);
   }
 
-  function openOrder() {
+  async function openOrder() {
+    const [bomData, companyData] = await Promise.all([
+      boms.length ? Promise.resolve(boms) : api('/manufacturing/boms'),
+      ensureCompanies()
+    ]);
+    if (!boms.length) setBoms(bomData);
+    const freshWarehouses = companyData.flatMap((company) => company.branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch, company }))));
     setOrderForm({
-      bomId: boms[0]?.id || '',
-      warehouseId: warehouses[0]?.id || '',
+      bomId: bomData[0]?.id || '',
+      warehouseId: freshWarehouses[0]?.id || '',
       orderNo: `MO-${Date.now().toString().slice(-6)}`,
       orderDate: today(),
       plannedStartDate: today(),
@@ -335,10 +359,28 @@ export default function ManufacturingPage() {
               <Grid size={4}><DateField fullWidth label="Production Date" value={completeForm.productionDate} onChange={(event) => setCompleteForm({ ...completeForm, productionDate: event.target.value })} /></Grid>
               <Grid size={4}><TextField fullWidth type="number" label="Output Quantity" value={completeForm.quantity} onChange={(event) => setCompleteForm({ ...completeForm, quantity: event.target.value })} /></Grid>
             </Grid>
-            <Table size="small">
-              <TableHead><TableRow><TableCell>Material</TableCell><TableCell align="right">Required</TableCell><TableCell align="right">Available</TableCell><TableCell align="right">Shortage</TableCell></TableRow></TableHead>
-              <TableBody>{requirements?.requirements.map((row) => <TableRow key={row.itemId}><TableCell>{row.itemName}</TableCell><TableCell align="right">{row.quantity.toFixed(3)} {row.unit}</TableCell><TableCell align="right">{row.availableQuantity.toFixed(3)}</TableCell><TableCell align="right" sx={{ color: row.shortageQuantity > 0 ? 'error.main' : 'success.main' }}>{row.shortageQuantity.toFixed(3)}</TableCell></TableRow>)}</TableBody>
-            </Table>
+            <CommonDataGrid
+              title="Material Requirements"
+              rows={(requirements?.requirements || []).map((row) => ({
+                ...row,
+                requiredText: `${Number(row.quantity || 0).toFixed(3)} ${row.unit}`,
+                availableText: Number(row.availableQuantity || 0).toFixed(3),
+                shortageText: Number(row.shortageQuantity || 0).toFixed(3),
+                shortageStatus: Number(row.shortageQuantity || 0) > 0 ? 'Shortage' : 'Available'
+              }))}
+              columns={[
+                { field: 'itemName', headerName: 'Material', flex: 1, minWidth: 180 },
+                { field: 'requiredText', headerName: 'Required', width: 140, align: 'right', headerAlign: 'right' },
+                { field: 'availableText', headerName: 'Available', width: 140, align: 'right', headerAlign: 'right' },
+                { field: 'shortageText', headerName: 'Shortage', width: 140, align: 'right', headerAlign: 'right' },
+                { field: 'shortageStatus', headerName: 'Status', width: 130 }
+              ]}
+              getRowId={(row) => row.itemId}
+              selectFilters={[{ field: 'shortageStatus', label: 'Status' }]}
+              fileName="material-requirements"
+              height={320}
+              pageSize={25}
+            />
             <TextField label="Production Notes" multiline minRows={2} value={completeForm.notes} onChange={(event) => setCompleteForm({ ...completeForm, notes: event.target.value })} />
           </Stack></DialogContent>
           <DialogActions><Button onClick={() => setCompleteOpen(false)}>Cancel</Button><Button type="submit" variant="contained" disabled={requirements?.requirements.some((row) => row.shortageQuantity > 0)}>Post Production</Button></DialogActions>
@@ -364,18 +406,133 @@ function DashboardPanel({ dashboard, orders }) {
 }
 
 function BomTable({ boms }) {
-  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>BOM</TableCell><TableCell>Finished Item</TableCell><TableCell>Output</TableCell><TableCell>Components</TableCell><TableCell>Effective Period</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{boms.map((bom) => <TableRow key={bom.id}><TableCell>{bom.name}<br />{bom.code} v{bom.version}</TableCell><TableCell>{bom.finishedItem.name}</TableCell><TableCell>{Number(bom.outputQuantity).toFixed(3)} {bom.finishedItem.unit.code}</TableCell><TableCell>{bom.components.map((component) => `${component.item.name}: ${Number(component.quantity).toFixed(3)} ${component.item.unit.code}${Number(component.wastagePercent) ? ` + ${Number(component.wastagePercent)}%` : ''}`).join(', ')}</TableCell><TableCell>{formatDate(bom.effectiveFrom)} to {bom.effectiveTo ? formatDate(bom.effectiveTo) : '' || 'Open'}</TableCell><TableCell><Chip size="small" color={bom.isActive ? 'success' : 'default'} label={bom.isActive ? 'Active' : 'Inactive'} /></TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  const rows = boms.map((bom) => ({
+    ...bom,
+    bomText: `${bom.name} | ${bom.code} v${bom.version}`,
+    finishedItemName: bom.finishedItem.name,
+    outputText: `${Number(bom.outputQuantity).toFixed(3)} ${bom.finishedItem.unit.code}`,
+    componentsText: bom.components.map((component) => `${component.item.name}: ${Number(component.quantity).toFixed(3)} ${component.item.unit.code}${Number(component.wastagePercent) ? ` + ${Number(component.wastagePercent)}%` : ''}`).join(', '),
+    effectiveFromDate: bom.effectiveFrom,
+    effectivePeriod: `${formatDate(bom.effectiveFrom)} to ${bom.effectiveTo ? formatDate(bom.effectiveTo) : 'Open'}`,
+    statusText: bom.isActive ? 'Active' : 'Inactive'
+  }));
+
+  return (
+    <CommonDataGrid
+      title="Bills of Material"
+      rows={rows}
+      columns={[
+        { field: 'bomText', headerName: 'BOM', flex: 1, minWidth: 180 },
+        { field: 'finishedItemName', headerName: 'Finished Item', flex: 1, minWidth: 160 },
+        { field: 'outputText', headerName: 'Output', width: 140 },
+        { field: 'componentsText', headerName: 'Components', flex: 1.4, minWidth: 240 },
+        { field: 'effectivePeriod', headerName: 'Effective Period', width: 210 },
+        { field: 'statusText', headerName: 'Status', width: 120 }
+      ]}
+      searchPlaceholder="Search BOM, item, or component"
+      dateField="effectiveFromDate"
+      selectFilters={[
+        { field: 'finishedItemName', label: 'Finished Item' },
+        { field: 'statusText', label: 'Status' }
+      ]}
+      fileName="manufacturing-boms"
+    />
+  );
 }
 
 function OrderTable({ orders, onComplete, compact = false }) {
-  return <TableContainer><Table size="small"><TableHead><TableRow><TableCell>Order</TableCell><TableCell>Finished Item</TableCell><TableCell>Warehouse</TableCell><TableCell>Progress</TableCell><TableCell>Status</TableCell>{!compact && <TableCell align="right">Action</TableCell>}</TableRow></TableHead><TableBody>{orders.map((order) => {
+  const rows = orders.map((order) => {
     const progress = Number(order.plannedQuantity) ? (Number(order.completedQuantity) / Number(order.plannedQuantity)) * 100 : 0;
-    return <TableRow key={order.id}><TableCell>{order.orderNo}<br />{formatDate(order.orderDate)}</TableCell><TableCell>{order.bom.finishedItem.name}<br />BOM {order.bom.code} v{order.bom.version}</TableCell><TableCell>{order.warehouse.name}</TableCell><TableCell sx={{ minWidth: 180 }}><Typography variant="caption">{Number(order.completedQuantity).toFixed(3)} / {Number(order.plannedQuantity).toFixed(3)} {order.bom.finishedItem.unit.code}</Typography><LinearProgress variant="determinate" value={Math.min(100, progress)} /></TableCell><TableCell><StatusChip status={order.status} /></TableCell>{!compact && <TableCell align="right"><Button size="small" variant="contained" disabled={!['PLANNED', 'IN_PROGRESS'].includes(order.status)} onClick={() => onComplete(order)}>Post Production</Button></TableCell>}</TableRow>;
-  })}</TableBody></Table></TableContainer>;
+    return {
+      ...order,
+      orderText: `${order.orderNo} | ${formatDate(order.orderDate)}`,
+      finishedItemName: order.bom.finishedItem.name,
+      bomText: `BOM ${order.bom.code} v${order.bom.version}`,
+      warehouseName: order.warehouse.name,
+      orderDateValue: order.orderDate,
+      progressText: `${Number(order.completedQuantity).toFixed(3)} / ${Number(order.plannedQuantity).toFixed(3)} ${order.bom.finishedItem.unit.code}`,
+      progressValue: Math.min(100, progress)
+    };
+  });
+  const columns = [
+    { field: 'orderText', headerName: 'Order', flex: 1, minWidth: 170 },
+    { field: 'finishedItemName', headerName: 'Finished Item', flex: 1, minWidth: 170 },
+    { field: 'warehouseName', headerName: 'Warehouse', flex: 1, minWidth: 150 },
+    {
+      field: 'progressText',
+      headerName: 'Progress',
+      width: 220,
+      renderCell: ({ row }) => (
+        <Box sx={{ width: '100%' }}>
+          <Typography variant="caption">{row.progressText}</Typography>
+          <LinearProgress variant="determinate" value={row.progressValue} />
+        </Box>
+      )
+    },
+    { field: 'status', headerName: 'Status', width: 140, renderCell: ({ value }) => <StatusChip status={value} /> }
+  ];
+  if (!compact) {
+    columns.push({
+      field: 'action',
+      headerName: 'Action',
+      width: 170,
+      sortable: false,
+      filterable: false,
+      renderCell: ({ row }) => (
+        <Button size="small" variant="contained" disabled={!['PLANNED', 'IN_PROGRESS'].includes(row.status)} onClick={() => onComplete(row)}>
+          Post Production
+        </Button>
+      )
+    });
+  }
+
+  return (
+    <CommonDataGrid
+      title={compact ? 'Open Production Orders' : 'Production Orders'}
+      rows={rows}
+      columns={columns}
+      searchPlaceholder="Search order, item, or warehouse"
+      dateField="orderDateValue"
+      selectFilters={[
+        { field: 'warehouseName', label: 'Warehouse' },
+        { field: 'status', label: 'Status' }
+      ]}
+      fileName={compact ? 'open-production-orders' : 'production-orders'}
+      height={compact ? 380 : 520}
+      pageSize={25}
+    />
+  );
 }
 
 function ProductionHistory({ entries }) {
-  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Entry / Order</TableCell><TableCell>Output</TableCell><TableCell>Consumed Materials</TableCell><TableCell align="right">Material Cost</TableCell><TableCell align="right">Unit Cost</TableCell></TableRow></TableHead><TableBody>{entries.map((entry) => <TableRow key={entry.id}><TableCell>{formatDate(entry.productionDate)}</TableCell><TableCell>{entry.entryNo}<br />{entry.order.orderNo}</TableCell><TableCell>{entry.outputItem.name}: {Number(entry.quantity).toFixed(3)} {entry.outputItem.unit.code}</TableCell><TableCell>{entry.consumptions.map((consumption) => `${consumption.item.name}: ${Number(consumption.quantity).toFixed(3)} ${consumption.item.unit.code}`).join(', ')}</TableCell><TableCell align="right">{Number(entry.materialCost).toFixed(2)}</TableCell><TableCell align="right">{Number(entry.unitCost).toFixed(2)}</TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  const rows = entries.map((entry) => ({
+    ...entry,
+    date: entry.productionDate,
+    dateText: formatDate(entry.productionDate),
+    entryText: `${entry.entryNo} | ${entry.order.orderNo}`,
+    outputText: `${entry.outputItem.name}: ${Number(entry.quantity).toFixed(3)} ${entry.outputItem.unit.code}`,
+    consumedText: entry.consumptions.map((consumption) => `${consumption.item.name}: ${Number(consumption.quantity).toFixed(3)} ${consumption.item.unit.code}`).join(', '),
+    materialCostText: Number(entry.materialCost).toFixed(2),
+    unitCostText: Number(entry.unitCost).toFixed(2)
+  }));
+
+  return (
+    <CommonDataGrid
+      title="Production History"
+      rows={rows}
+      columns={[
+        { field: 'dateText', headerName: 'Date', width: 130 },
+        { field: 'entryText', headerName: 'Entry / Order', flex: 1, minWidth: 170 },
+        { field: 'outputText', headerName: 'Output', flex: 1, minWidth: 200 },
+        { field: 'consumedText', headerName: 'Consumed Materials', flex: 1.4, minWidth: 260 },
+        { field: 'materialCostText', headerName: 'Material Cost', width: 150, align: 'right', headerAlign: 'right' },
+        { field: 'unitCostText', headerName: 'Unit Cost', width: 130, align: 'right', headerAlign: 'right' }
+      ]}
+      searchPlaceholder="Search entry, order, output, or material"
+      dateField="date"
+      fileName="production-history"
+    />
+  );
 }
 
 function StatusChip({ status }) {

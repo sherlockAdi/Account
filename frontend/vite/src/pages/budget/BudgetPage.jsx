@@ -12,13 +12,11 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
-import LinearProgress from '@mui/material/LinearProgress';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
@@ -28,6 +26,7 @@ import DeleteOutlined from '@ant-design/icons/DeleteOutlined';
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 import { formatDate, todayIso } from 'utils/dateFormat';
 
@@ -211,40 +210,54 @@ function BudgetOverview({ dashboard }) {
 }
 
 function BudgetTable({ budgets, onStatus }) {
+  const rows = budgets.map((budget) => ({
+    ...budget,
+    budgetName: `${budget.name} ${budget.code} / ${budget.fiscalYear}`,
+    fromDate: budget.periodFrom,
+    period: `${formatDate(budget.periodFrom)} to ${formatDate(budget.periodTo)}`,
+    allocated: Number(budget.totalAmount || 0),
+    actual: Number(budget.actualAmount || 0),
+    remaining: Number(budget.remainingAmount || 0),
+    utilization: Number(budget.utilizationPercent || 0),
+    lineText: budget.lines?.map((line) => `${line.ledger.name}: ${money(line.allocatedAmount)} (${Number(line.utilizationPercent || 0).toFixed(1)}%)`).join(' | ') || '-'
+  }));
+  const columns = [
+    { field: 'budgetName', headerName: 'Budget', flex: 1.1, minWidth: 240 },
+    { field: 'period', headerName: 'Period', flex: 0.9, minWidth: 190 },
+    { field: 'status', headerName: 'Status', flex: 0.7, minWidth: 130 },
+    { field: 'allocated', headerName: 'Allocated', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => money(value) },
+    { field: 'actual', headerName: 'Actual', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => money(value) },
+    { field: 'remaining', headerName: 'Remaining', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => money(value) },
+    { field: 'utilization', headerName: 'Utilization %', type: 'number', flex: 0.8, minWidth: 150, valueFormatter: (value) => `${Number(value || 0).toFixed(2)}%` },
+    { field: 'lineText', headerName: 'Lines', flex: 1.7, minWidth: 360 },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      sortable: false,
+      filterable: false,
+      exportable: false,
+      flex: 1,
+      minWidth: 230,
+      renderCell: (params) => (
+        <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
+          {params.row.status === 'DRAFT' && <Button size="small" onClick={() => onStatus(params.row, 'ACTIVE')}>Activate</Button>}
+          {params.row.status === 'ACTIVE' && <Button size="small" onClick={() => onStatus(params.row, 'CLOSED')}>Close</Button>}
+          {params.row.status !== 'ARCHIVED' && <Button size="small" color="warning" onClick={() => onStatus(params.row, 'ARCHIVED')}>Archive</Button>}
+        </Stack>
+      )
+    }
+  ];
   return (
-    <TableContainer sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
-      <Table size="small" sx={{ minWidth: 1180, '& th, & td': { verticalAlign: 'top' } }}>
-        <TableHead>
-          <TableRow>
-            <TableCell sx={{ width: 210 }}>Budget</TableCell>
-            <TableCell sx={{ width: 140 }}>Period</TableCell>
-            <TableCell sx={{ width: 100 }}>Status</TableCell>
-            <TableCell align="right" sx={{ width: 130 }}>Allocated</TableCell>
-            <TableCell align="right" sx={{ width: 120 }}>Actual</TableCell>
-            <TableCell align="right" sx={{ width: 130 }}>Remaining</TableCell>
-            <TableCell sx={{ width: 170 }}>Utilization</TableCell>
-            <TableCell>Lines</TableCell>
-            <TableCell align="right" sx={{ width: 150 }}>Actions</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {budgets.map((budget) => (
-            <TableRow key={budget.id} hover>
-              <TableCell><Typography fontWeight={600}>{budget.name}</Typography><Typography variant="caption" color="text.secondary">{budget.code} / {budget.fiscalYear}</Typography></TableCell>
-              <TableCell><Stack spacing={0.25}><Typography>{formatDate(budget.periodFrom)}</Typography><Typography variant="caption" color="text.secondary">to</Typography><Typography>{formatDate(budget.periodTo)}</Typography></Stack></TableCell>
-              <TableCell><BudgetStatusChip status={budget.status} /></TableCell>
-              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{money(budget.totalAmount)}</TableCell>
-              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{money(budget.actualAmount)}</TableCell>
-              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{money(budget.remainingAmount)}</TableCell>
-              <TableCell><Typography variant="caption">{Number(budget.utilizationPercent || 0).toFixed(2)}%</Typography><LinearProgress variant="determinate" value={Math.min(100, Number(budget.utilizationPercent || 0))} sx={{ mt: 0.5, height: 6, borderRadius: 1 }} /></TableCell>
-              <TableCell><BudgetLines lines={budget.lines} /></TableCell>
-              <TableCell align="right"><Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end', flexWrap: 'nowrap' }}>{budget.status === 'DRAFT' && <Button size="small" onClick={() => onStatus(budget, 'ACTIVE')}>Activate</Button>}{budget.status === 'ACTIVE' && <Button size="small" onClick={() => onStatus(budget, 'CLOSED')}>Close</Button>}{budget.status !== 'ARCHIVED' && <Button size="small" color="warning" onClick={() => onStatus(budget, 'ARCHIVED')}>Archive</Button>}</Stack></TableCell>
-            </TableRow>
-          ))}
-          {!budgets.length && <TableRow><TableCell colSpan={9} align="center">No budgets created yet.</TableCell></TableRow>}
-        </TableBody>
-      </Table>
-    </TableContainer>
+    <CommonDataGrid
+      title="Budgets"
+      rows={rows}
+      columns={columns}
+      fileName="budgets"
+      searchPlaceholder="Search budgets"
+      dateField="fromDate"
+      selectFilters={[{ field: 'status', label: 'Status', options: Array.from(new Set(rows.map((row) => row.status))).map((status) => ({ value: status, label: status })) }]}
+      height={560}
+    />
   );
 }
 
