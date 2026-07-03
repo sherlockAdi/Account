@@ -17,12 +17,6 @@ import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -30,6 +24,8 @@ import Typography from '@mui/material/Typography';
 import DownOutlined from '@ant-design/icons/DownOutlined';
 import EditOutlined from '@ant-design/icons/EditOutlined';
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
+
+import CommonDataGrid from 'components/CommonDataGrid';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 
@@ -53,6 +49,9 @@ export default function IdentityPage() {
   const [permissions, setPermissions] = useState([]);
   const [roles, setRoles] = useState([]);
   const [users, setUsers] = useState([]);
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [rolesLoaded, setRolesLoaded] = useState(false);
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [userModalOpen, setUserModalOpen] = useState(false);
@@ -71,15 +70,8 @@ export default function IdentityPage() {
     [permissions]
   );
 
-  async function loadData() {
-    const [permissionData, roleData, userData] = await Promise.all([
-      api('/identity/permissions'),
-      api('/identity/roles'),
-      api('/identity/users')
-    ]);
-    setPermissions(permissionData);
+  function applyRoles(roleData) {
     setRoles(roleData);
-    setUsers(userData);
     setPermissionEditor((current) => {
       const selectedRole = roleData.find((role) => role.id === current.roleId) || roleData[0];
       return selectedRole
@@ -88,12 +80,45 @@ export default function IdentityPage() {
     });
   }
 
-  useEffect(() => {
-    loadData().catch((loadError) => setError(loadError.message));
-  }, []);
+  async function ensureRoles(force = false) {
+    if (!force && rolesLoaded && roles.length) return roles;
+    const roleData = await api('/identity/roles');
+    applyRoles(roleData);
+    setRolesLoaded(true);
+    return roleData;
+  }
 
-  function openCreateUser() {
-    setUserForm({ ...emptyUser, roleCodes: roles[0] ? [roles[0].code] : [] });
+  async function ensurePermissions(force = false) {
+    if (!force && permissionsLoaded && permissions.length) return permissions;
+    const permissionData = await api('/identity/permissions');
+    setPermissions(permissionData);
+    setPermissionsLoaded(true);
+    return permissionData;
+  }
+
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
+    setError('');
+    if (tabIndex === 0) {
+      const [userData] = await Promise.all([api('/identity/users'), ensureRoles(force)]);
+      setUsers(userData);
+    }
+    if (tabIndex === 1) {
+      await Promise.all([ensureRoles(force), ensurePermissions(force)]);
+    }
+    if (tabIndex === 2) {
+      await Promise.all([ensurePermissions(force), ensureRoles(force)]);
+    }
+    setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
+  }
+
+  useEffect(() => {
+    loadTabData(tab).catch((loadError) => setError(loadError.message));
+  }, [tab]);
+
+  async function openCreateUser() {
+    const roleData = await ensureRoles();
+    setUserForm({ ...emptyUser, roleCodes: roleData[0] ? [roleData[0].code] : [] });
     setUserModalOpen(true);
   }
 
@@ -108,12 +133,14 @@ export default function IdentityPage() {
     setUserModalOpen(true);
   }
 
-  function openCreateRole() {
+  async function openCreateRole() {
+    await ensurePermissions();
     setRoleForm(emptyRole);
     setRoleModalOpen(true);
   }
 
-  function openEditRole(role) {
+  async function openEditRole(role) {
+    await ensurePermissions();
     setRoleForm({
       id: role.id,
       name: role.name,
@@ -138,7 +165,7 @@ export default function IdentityPage() {
     else await api('/identity/users', { method: 'POST', body: JSON.stringify({ ...body, password: userForm.password }) });
     setUserModalOpen(false);
     setMessage(userForm.id ? 'User updated' : 'User created');
-    await loadData();
+    await loadTabData(0, true);
   }
 
   async function saveRole(event) {
@@ -155,7 +182,7 @@ export default function IdentityPage() {
     else await api('/identity/roles', { method: 'POST', body: JSON.stringify(body) });
     setRoleModalOpen(false);
     setMessage(roleForm.id ? 'Role updated' : 'Role created');
-    await loadData();
+    await loadTabData(tab, true);
   }
 
   function selectPermissionRole(roleId) {
@@ -193,7 +220,7 @@ export default function IdentityPage() {
       body: JSON.stringify({ permissionCodes: permissionEditor.permissionCodes })
     });
     setMessage('Role permissions updated');
-    await loadData();
+    await loadTabData(2, true);
   }
 
   return (
@@ -221,40 +248,20 @@ export default function IdentityPage() {
                   Create User
                 </Button>
               </Stack>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>User</TableCell>
-                      <TableCell>Email</TableCell>
-                      <TableCell>Roles</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell align="right">Action</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {users.map((user) => (
-                      <TableRow key={user.id} hover>
-                        <TableCell>{user.fullName}</TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>
-                          <Stack direction="row" spacing={1} flexWrap="wrap">
-                            {user.roles.map((item) => (
-                              <Chip key={item.roleId} label={item.role.name} size="small" />
-                            ))}
-                          </Stack>
-                        </TableCell>
-                        <TableCell>{user.status}</TableCell>
-                        <TableCell align="right">
-                          <Button size="small" startIcon={<EditOutlined />} onClick={() => openEditUser(user)}>
-                            Edit
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+              <CommonDataGrid
+                title="Users"
+                rows={users.map((user) => ({ ...user, rolesText: user.roles.map((item) => item.role.name).join(', ') }))}
+                columns={[
+                  { field: 'fullName', headerName: 'User', flex: 1, minWidth: 180 },
+                  { field: 'email', headerName: 'Email', flex: 1.2, minWidth: 220 },
+                  { field: 'rolesText', headerName: 'Roles', flex: 1, minWidth: 180 },
+                  { field: 'status', headerName: 'Status', width: 130 },
+                  { field: 'action', headerName: 'Action', width: 120, sortable: false, filterable: false, renderCell: ({ row }) => <Button size="small" startIcon={<EditOutlined />} onClick={() => openEditUser(row)}>Edit</Button> }
+                ]}
+                searchPlaceholder="Search user, email, role, or status"
+                selectFilters={[{ field: 'rolesText', label: 'Roles' }, { field: 'status', label: 'Status' }]}
+                fileName="identity-users"
+              />
             </Stack>
           )}
 
@@ -265,39 +272,20 @@ export default function IdentityPage() {
                   Create Role
                 </Button>
               </Stack>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Role</TableCell>
-                      <TableCell>Code</TableCell>
-                      <TableCell>Permissions</TableCell>
-                      <TableCell>Users</TableCell>
-                      <TableCell align="right">Action</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {roles.map((role) => (
-                      <TableRow key={role.id} hover>
-                        <TableCell>
-                          <Typography variant="subtitle1">{role.name}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {role.description}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>{role.code}</TableCell>
-                        <TableCell>{role.permissions.length}</TableCell>
-                        <TableCell>{role._count?.users || 0}</TableCell>
-                        <TableCell align="right">
-                          <Button size="small" startIcon={<EditOutlined />} onClick={() => openEditRole(role)}>
-                            Edit
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+              <CommonDataGrid
+                title="Roles"
+                rows={roles.map((role) => ({ ...role, roleText: `${role.name} | ${role.description || ''}`, permissionsCount: role.permissions.length, usersCount: role._count?.users || 0 }))}
+                columns={[
+                  { field: 'roleText', headerName: 'Role', flex: 1.2, minWidth: 220 },
+                  { field: 'code', headerName: 'Code', width: 150 },
+                  { field: 'permissionsCount', headerName: 'Permissions', width: 140, align: 'right', headerAlign: 'right' },
+                  { field: 'usersCount', headerName: 'Users', width: 120, align: 'right', headerAlign: 'right' },
+                  { field: 'action', headerName: 'Action', width: 120, sortable: false, filterable: false, renderCell: ({ row }) => <Button size="small" startIcon={<EditOutlined />} onClick={() => openEditRole(row)}>Edit</Button> }
+                ]}
+                searchPlaceholder="Search role, code, or description"
+                selectFilters={[{ field: 'code', label: 'Code' }]}
+                fileName="identity-roles"
+              />
             </Stack>
           )}
 

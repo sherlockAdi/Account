@@ -5,10 +5,10 @@ import Link from '@mui/material/Link';
 import Box from '@mui/material/Box';
 
 // project imports
-import Search from './Search';
 import Profile from './Profile';
 import Notification from './Notification';
 import MobileSection from './MobileSection';
+import Breadcrumbs from 'components/@extended/Breadcrumbs';
 
 // project import
 import { GithubOutlined } from '@ant-design/icons';
@@ -20,7 +20,11 @@ export default function HeaderContent() {
 
   return (
     <>
-      {!downLG && <Search />}
+      {!downLG && (
+        <Box sx={{ flexGrow: 1, minWidth: 0, ml: 2 }}>
+          <Breadcrumbs title={false} divider={false} sx={{ mb: 0, p: 0 }} />
+        </Box>
+      )}
       {downLG && <Box sx={{ width: '100%', ml: 1 }} />}
       <IconButton
         component={Link}

@@ -127,6 +127,27 @@ const erp = {
       icon: icons.PieChartOutlined
     },
     {
+      id: 'budget',
+      title: 'Budget',
+      type: 'item',
+      url: '/budget',
+      icon: icons.CalculatorOutlined
+    },
+    {
+      id: 'grand',
+      title: 'Grant',
+      type: 'item',
+      url: '/grand',
+      icon: icons.FileProtectOutlined
+    },
+    {
+      id: 'utilization',
+      title: 'Utilization',
+      type: 'item',
+      url: '/utilization',
+      icon: icons.PieChartOutlined
+    },
+    {
       id: 'audit',
       title: 'Audit & Security',
       type: 'item',

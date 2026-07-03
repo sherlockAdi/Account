@@ -3,11 +3,14 @@ import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { AccountingService } from './accounting.service';
 import { AccountingQueryDto } from './dto/accounting-query.dto';
 import { CreateAccountGroupDto } from './dto/create-account-group.dto';
+import { CreateBudgetGrantDto } from './dto/create-budget-grant.dto';
+import { CreateBudgetTypeDto } from './dto/create-budget-type.dto';
 import { CreateLedgerDto } from './dto/create-ledger.dto';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { CreateVoucherTypeDto } from './dto/create-voucher-type.dto';
 import { UpdateAccountGroupDto } from './dto/update-account-group.dto';
 import { UpdateLedgerDto } from './dto/update-ledger.dto';
+import { UpdateVoucherBudgetDto } from './dto/update-voucher-budget.dto';
 import { UpdateVoucherTypeDto } from './dto/update-voucher-type.dto';
 
 @ApiTags('Accounting')
@@ -69,6 +72,24 @@ export class AccountingController {
     return this.accountingService.updateVoucherType(id, dto);
   }
 
+  @Get('budgets')
+  @ApiOkResponse({ description: 'List budget masters with grants and utilization.' })
+  listBudgets(@Query('companyId') companyId?: string) {
+    return this.accountingService.listBudgets(companyId);
+  }
+
+  @Post('budgets')
+  @ApiCreatedResponse({ description: 'Create budget master.' })
+  createBudget(@Query('companyId') companyId: string | undefined, @Body() dto: CreateBudgetTypeDto) {
+    return this.accountingService.createBudget(companyId, dto);
+  }
+
+  @Post('budgets/:budgetTypeId/grants')
+  @ApiCreatedResponse({ description: 'Create budget grant.' })
+  createBudgetGrant(@Query('companyId') companyId: string | undefined, @Param('budgetTypeId') budgetTypeId: string, @Body() dto: CreateBudgetGrantDto) {
+    return this.accountingService.createBudgetGrant(companyId, budgetTypeId, dto);
+  }
+
   @Get('vouchers')
   @ApiOkResponse({ description: 'List vouchers/day book.' })
   listVouchers(@Query() query: AccountingQueryDto) {
@@ -79,6 +100,12 @@ export class AccountingController {
   @ApiCreatedResponse({ description: 'Create balanced voucher.' })
   createVoucher(@Query('companyId') companyId: string | undefined, @Body() dto: CreateVoucherDto) {
     return this.accountingService.createVoucher(companyId, dto);
+  }
+
+  @Patch('vouchers/:id/budget')
+  @ApiOkResponse({ description: 'Update voucher budget/grant selection.' })
+  updateVoucherBudget(@Query('companyId') companyId: string | undefined, @Param('id') id: string, @Body() dto: UpdateVoucherBudgetDto) {
+    return this.accountingService.updateVoucherBudget(companyId, id, dto);
   }
 
   @Get('reports/trial-balance')

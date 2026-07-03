@@ -1,0 +1,161 @@
+[2m3:10:36 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to load url /src/menu-items/erp.jsx (resolved id: D:/Aditya Kumar Dwivedi/Account/frontend/vite/src/menu-items/erp.jsx) in D:/Aditya Kumar Dwivedi/Account/frontend/vite/src/menu-items/index.jsx. Does the file exist?
+[2m3:10:36 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/components/@extended/Breadcrumbs.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:10:36 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/layout/Dashboard/Drawer/DrawerContent/Navigation/index.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:12:13 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/layout/Dashboard/Drawer/DrawerContent/NavCard.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:12:41 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/components/cards/AuthFooter.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:14:13 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to load url /src/menu-items/erp.jsx (resolved id: D:/Aditya Kumar Dwivedi/Account/frontend/vite/src/menu-items/erp.jsx) in D:/Aditya Kumar Dwivedi/Account/frontend/vite/src/menu-items/index.jsx. Does the file exist?
+[2m3:14:13 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/layout/Dashboard/Drawer/DrawerContent/Navigation/index.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:14:13 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/components/@extended/Breadcrumbs.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:19:20 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to load url /src/menu-items/erp.jsx (resolved id: D:/Aditya Kumar Dwivedi/Account/frontend/vite/src/menu-items/erp.jsx) in D:/Aditya Kumar Dwivedi/Account/frontend/vite/src/menu-items/index.jsx. Does the file exist?
+[2m3:19:20 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/layout/Dashboard/Drawer/DrawerContent/Navigation/index.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:19:20 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/components/@extended/Breadcrumbs.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:25:34 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to resolve import "pages/companies/WarehousePage" from "src/routes/MainRoutes.jsx". Does the file exist?
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Aditya Kumar Dwivedi/Account/frontend/vite/src/routes/MainRoutes.jsx[39m:15:49
+[33m  19 |  const BranchPage = Loadable(_c17 = lazy(_c16 = () => import("pages/companies/BranchPage")));
+  20 |  _c18 = BranchPage;
+  21 |  const WarehousePage = Loadable(_c20 = lazy(_c19 = () => import("pages/companies/WarehousePage")));
+     |                                                                 ^
+  22 |  _c21 = WarehousePage;
+  23 |  const VoucherSeriesPage = Loadable(_c23 = lazy(_c22 = () => import("pages/companies/VoucherSeriesPage")));[39m
+[2m3:25:34 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "pages/companies/WarehousePage" from "src/routes/MainRoutes.jsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Aditya Kumar Dwivedi/Account/frontend/vite/src/routes/MainRoutes.jsx[39m:15:49
+[33m  19 |  const BranchPage = Loadable(_c17 = lazy(_c16 = () => import("pages/companies/BranchPage")));
+  20 |  _c18 = BranchPage;
+  21 |  const WarehousePage = Loadable(_c20 = lazy(_c19 = () => import("pages/companies/WarehousePage")));
+     |                                                                 ^
+  22 |  _c21 = WarehousePage;
+  23 |  const VoucherSeriesPage = Loadable(_c23 = lazy(_c22 = () => import("pages/companies/VoucherSeriesPage")));[39m
+      at TransformPluginContext._formatLog (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:30486:39)
+      at TransformPluginContext.error (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:30483:14)
+      at normalizeUrl (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:27725:18)
+      at async file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:27788:30
+      at async Promise.all (index 11)
+      at async TransformPluginContext.transform (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:27756:4)
+      at async EnvironmentPluginContainer.transform (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:30271:14)
+      at async loadAndTransform (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:24532:26)
+[2m3:25:34 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/routes/MainRoutes.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:25:51 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:26:16 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to resolve import "@mui/icons-material/ExpandLess" from "src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx". Does the file exist?
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Aditya Kumar Dwivedi/Account/frontend/vite/src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx[39m:15:23
+[33m  10 |  import Typography from "@mui/material/Typography";
+  11 |  import Box from "@mui/material/Box";
+  12 |  import ExpandLess from "@mui/icons-material/ExpandLess";
+     |                          ^
+  13 |  import ExpandMore from "@mui/icons-material/ExpandMore";
+  14 |  // project import[39m
+[2m3:26:16 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@mui/icons-material/ExpandLess" from "src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Aditya Kumar Dwivedi/Account/frontend/vite/src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx[39m:15:23
+[33m  10 |  import Typography from "@mui/material/Typography";
+  11 |  import Box from "@mui/material/Box";
+  12 |  import ExpandLess from "@mui/icons-material/ExpandLess";
+     |                          ^
+  13 |  import ExpandMore from "@mui/icons-material/ExpandMore";
+  14 |  // project import[39m
+      at TransformPluginContext._formatLog (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:30486:39)
+      at TransformPluginContext.error (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:30483:14)
+      at normalizeUrl (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:27725:18)
+      at async file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:27788:30
+      at async Promise.all (index 10)
+      at async TransformPluginContext.transform (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:27756:4)
+      at async EnvironmentPluginContainer.transform (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:30271:14)
+      at async loadAndTransform (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:24532:26)
+[2m3:26:16 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:26:33 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to resolve import "@mui/icons-material/ExpandLess" from "src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx". Does the file exist?
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Aditya Kumar Dwivedi/Account/frontend/vite/src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx[39m:15:23
+[33m  10 |  import Typography from "@mui/material/Typography";
+  11 |  import Box from "@mui/material/Box";
+  12 |  import ExpandLess from "@mui/icons-material/ExpandLess";
+     |                          ^
+  13 |  import ExpandMore from "@mui/icons-material/ExpandMore";
+  14 |  // project import[39m
+[2m3:26:33 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@mui/icons-material/ExpandLess" from "src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Aditya Kumar Dwivedi/Account/frontend/vite/src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx[39m:15:23
+[33m  10 |  import Typography from "@mui/material/Typography";
+  11 |  import Box from "@mui/material/Box";
+  12 |  import ExpandLess from "@mui/icons-material/ExpandLess";
+     |                          ^
+  13 |  import ExpandMore from "@mui/icons-material/ExpandMore";
+  14 |  // project import[39m
+      at TransformPluginContext._formatLog (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:30486:39)
+      at TransformPluginContext.error (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:30483:14)
+      at normalizeUrl (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:27725:18)
+      at async file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:27788:30
+      at async Promise.all (index 10)
+      at async TransformPluginContext.transform (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:27756:4)
+      at async EnvironmentPluginContainer.transform (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:30271:14)
+      at async loadAndTransform (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:24532:26)
+[2m3:26:33 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to resolve import "@mui/icons-material/ExpandLess" from "src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx". Does the file exist?
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Aditya Kumar Dwivedi/Account/frontend/vite/src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx[39m:15:23
+[33m  10 |  import Typography from "@mui/material/Typography";
+  11 |  import Box from "@mui/material/Box";
+  12 |  import ExpandLess from "@mui/icons-material/ExpandLess";
+     |                          ^
+  13 |  import ExpandMore from "@mui/icons-material/ExpandMore";
+  14 |  // project import[39m
+[2m3:26:33 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/layout/Dashboard/Drawer/DrawerContent/Navigation/index.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:30:35 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to load url /src/menu-items/erp.jsx (resolved id: D:/Aditya Kumar Dwivedi/Account/frontend/vite/src/menu-items/erp.jsx) in D:/Aditya Kumar Dwivedi/Account/frontend/vite/src/menu-items/index.jsx. Does the file exist?
+[2m3:30:35 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/layout/Dashboard/Drawer/DrawerContent/Navigation/index.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:30:35 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/components/@extended/Breadcrumbs.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:30:35 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to resolve import "@mui/icons-material/ExpandLess" from "src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx". Does the file exist?
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Aditya Kumar Dwivedi/Account/frontend/vite/src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx[39m:15:23
+[33m  10 |  import Typography from "@mui/material/Typography";
+  11 |  import Box from "@mui/material/Box";
+  12 |  import ExpandLess from "@mui/icons-material/ExpandLess";
+     |                          ^
+  13 |  import ExpandMore from "@mui/icons-material/ExpandMore";
+  14 |  // project import[39m
+[2m3:30:35 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to resolve import "@mui/icons-material/ExpandLess" from "src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx". Does the file exist?
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Aditya Kumar Dwivedi/Account/frontend/vite/src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx[39m:15:23
+[33m  10 |  import Typography from "@mui/material/Typography";
+  11 |  import Box from "@mui/material/Box";
+  12 |  import ExpandLess from "@mui/icons-material/ExpandLess";
+     |                          ^
+  13 |  import ExpandMore from "@mui/icons-material/ExpandMore";
+  14 |  // project import[39m
+[2m3:30:56 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: Failed to resolve import "@mui/icons-material/ExpandLess" from "src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx". Does the file exist?[39m
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Aditya Kumar Dwivedi/Account/frontend/vite/src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx[39m:15:23
+[33m  10 |  import Typography from "@mui/material/Typography";
+  11 |  import Box from "@mui/material/Box";
+  12 |  import ExpandLess from "@mui/icons-material/ExpandLess";
+     |                          ^
+  13 |  import ExpandMore from "@mui/icons-material/ExpandMore";
+  14 |  // project import[39m
+      at TransformPluginContext._formatLog (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:30486:39)
+      at TransformPluginContext.error (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:30483:14)
+      at normalizeUrl (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:27725:18)
+      at async file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:27788:30
+      at async Promise.all (index 10)
+      at async TransformPluginContext.transform (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:27756:4)
+      at async EnvironmentPluginContainer.transform (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:30271:14)
+      at async loadAndTransform (file:///D:/Aditya%20Kumar%20Dwivedi/Account/frontend/vite/node_modules/vite/dist/node/chunks/node.js:24532:26)
+[2m3:30:56 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to resolve import "@mui/icons-material/ExpandLess" from "src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx". Does the file exist?
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Aditya Kumar Dwivedi/Account/frontend/vite/src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx[39m:15:23
+[33m  10 |  import Typography from "@mui/material/Typography";
+  11 |  import Box from "@mui/material/Box";
+  12 |  import ExpandLess from "@mui/icons-material/ExpandLess";
+     |                          ^
+  13 |  import ExpandMore from "@mui/icons-material/ExpandMore";
+  14 |  // project import[39m
+[2m3:30:56 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to resolve import "@mui/icons-material/ExpandLess" from "src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx". Does the file exist?
+  Plugin: [35mvite:import-analysis[39m
+  File: [36mD:/Aditya Kumar Dwivedi/Account/frontend/vite/src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx[39m:15:23
+[33m  10 |  import Typography from "@mui/material/Typography";
+  11 |  import Box from "@mui/material/Box";
+  12 |  import ExpandLess from "@mui/icons-material/ExpandLess";
+     |                          ^
+  13 |  import ExpandMore from "@mui/icons-material/ExpandMore";
+  14 |  // project import[39m
+[2m3:30:56 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/layout/Dashboard/Drawer/DrawerContent/Navigation/index.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)
+[2m3:30:58 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m Pre-transform error: Failed to load url /src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx (resolved id: D:/Aditya Kumar Dwivedi/Account/frontend/vite/src/layout/Dashboard/Drawer/DrawerContent/Navigation/NavGroup.jsx) in D:/Aditya Kumar Dwivedi/Account/frontend/vite/src/layout/Dashboard/Drawer/DrawerContent/Navigation/index.jsx. Does the file exist?
+[2m3:30:58 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[vite] Failed to reload /src/layout/Dashboard/Drawer/DrawerContent/Navigation/index.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above)

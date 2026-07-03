@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -10,18 +10,13 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 
 import EditOutlined from '@ant-design/icons/EditOutlined';
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import { formatDate } from 'utils/dateFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
@@ -51,25 +46,26 @@ export default function GstPage() {
   const [error, setError] = useState('');
   const [taxOpen, setTaxOpen] = useState(false);
   const [taxForm, setTaxForm] = useState(emptyTaxForm);
+  const [loadedTabs, setLoadedTabs] = useState({});
 
-  async function loadData() {
-    const [taxData, gstr1Data, gstr3bData, itcData, hsnData] = await Promise.all([
-      api('/gst/tax-rates'),
-      api('/gst/reports/gstr-1'),
-      api('/gst/reports/gstr-3b'),
-      api('/gst/reports/itc'),
-      api('/gst/reports/hsn-summary')
-    ]);
-    setTaxRates(taxData);
-    setGstr1(gstr1Data);
-    setGstr3b(gstr3bData);
-    setItc(itcData);
-    setHsn(hsnData);
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
+    try {
+      setError('');
+      if (tabIndex === 0) setTaxRates(await api('/gst/tax-rates'));
+      if (tabIndex === 1) setGstr1(await api('/gst/reports/gstr-1'));
+      if (tabIndex === 2) setGstr3b(await api('/gst/reports/gstr-3b'));
+      if (tabIndex === 3) setItc(await api('/gst/reports/itc'));
+      if (tabIndex === 4) setHsn(await api('/gst/reports/hsn-summary'));
+      setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
+    } catch (loadError) {
+      setError(loadError.message);
+    }
   }
 
   useEffect(() => {
-    loadData().catch((loadError) => setError(loadError.message));
-  }, []);
+    loadTabData(tab);
+  }, [tab]);
 
   function openCreateTaxRate() {
     setTaxForm(emptyTaxForm);
@@ -108,11 +104,90 @@ export default function GstPage() {
       });
       setTaxOpen(false);
       setMessage(taxForm.id ? 'Tax rate updated' : 'Tax rate created');
-      await loadData();
+      await loadTabData(0, true);
     } catch (saveError) {
       setError(saveError.message);
     }
   }
+
+  const taxRateRows = useMemo(
+    () =>
+      taxRates.map((taxRate) => ({
+        ...taxRate,
+        rateAmount: Number(taxRate.rate || 0),
+        cgstAmount: Number(taxRate.cgstRate || 0),
+        sgstAmount: Number(taxRate.sgstRate || 0),
+        igstAmount: Number(taxRate.igstRate || 0)
+      })),
+    [taxRates]
+  );
+
+  const taxInvoiceRows = (rows, partyKey) =>
+    rows.map((row) => ({
+      ...row,
+      date: row.invoiceDate,
+      partyName: row[partyKey] || '-',
+      taxable: Number(row.taxableValue || 0),
+      tax: Number(row.taxAmount || 0),
+      total: Number(row.totalAmount || 0)
+    }));
+
+  const gstr1Rows = useMemo(() => taxInvoiceRows(gstr1.invoices || [], 'customerName'), [gstr1.invoices]);
+  const itcRows = useMemo(() => taxInvoiceRows(itc.invoices || [], 'vendorName'), [itc.invoices]);
+  const gstr3bRows = useMemo(
+    () => [
+      { id: 'outward', particular: 'Outward taxable value', amount: Number(gstr3b.outwardTaxableValue || 0) },
+      { id: 'output', particular: 'Output tax', amount: Number(gstr3b.outputTax || 0) },
+      { id: 'inward', particular: 'Inward taxable value', amount: Number(gstr3b.inwardTaxableValue || 0) },
+      { id: 'input', particular: 'Input tax credit', amount: Number(gstr3b.inputTaxCredit || 0) },
+      { id: 'net', particular: 'Net tax payable', amount: Number(gstr3b.netTaxPayable || 0) }
+    ],
+    [gstr3b]
+  );
+  const salesHsnRows = useMemo(() => (hsn.sales || []).map((row) => ({ ...row, id: `sales-${row.hsnSac}`, type: 'Sales', quantityAmount: Number(row.quantity || 0), taxable: Number(row.taxableValue || 0), tax: Number(row.taxAmount || 0), total: Number(row.totalAmount || 0) })), [hsn.sales]);
+  const purchaseHsnRows = useMemo(() => (hsn.purchases || []).map((row) => ({ ...row, id: `purchase-${row.hsnSac}`, type: 'Purchase', quantityAmount: Number(row.quantity || 0), taxable: Number(row.taxableValue || 0), tax: Number(row.taxAmount || 0), total: Number(row.totalAmount || 0) })), [hsn.purchases]);
+
+  const taxRateColumns = useMemo(
+    () => [
+      { field: 'name', headerName: 'Name', flex: 1, minWidth: 180 },
+      { field: 'code', headerName: 'Code', flex: 0.7, minWidth: 120 },
+      { field: 'rateAmount', headerName: 'Rate %', type: 'number', flex: 0.7, minWidth: 120, valueFormatter: (value) => formatAmount(value) },
+      { field: 'cgstAmount', headerName: 'CGST %', type: 'number', flex: 0.7, minWidth: 120, valueFormatter: (value) => formatAmount(value) },
+      { field: 'sgstAmount', headerName: 'SGST %', type: 'number', flex: 0.7, minWidth: 120, valueFormatter: (value) => formatAmount(value) },
+      { field: 'igstAmount', headerName: 'IGST %', type: 'number', flex: 0.7, minWidth: 120, valueFormatter: (value) => formatAmount(value) },
+      { field: 'actions', headerName: 'Action', sortable: false, filterable: false, exportable: false, flex: 0.7, minWidth: 120, renderCell: (params) => <Button size="small" startIcon={<EditOutlined />} onClick={() => openEditTaxRate(params.row)}>Edit</Button> }
+    ],
+    []
+  );
+
+  const invoiceTaxColumns = (partyLabel) => [
+    { field: 'date', headerName: 'Date', flex: 0.7, minWidth: 130, valueFormatter: (value) => (value ? formatDate(value) : '') },
+    { field: 'invoiceNo', headerName: 'Invoice', flex: 0.8, minWidth: 150 },
+    { field: 'partyName', headerName: partyLabel, flex: 1, minWidth: 190 },
+    { field: 'taxable', headerName: 'Taxable', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatAmount(value) },
+    { field: 'tax', headerName: 'Tax', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatAmount(value) },
+    { field: 'total', headerName: 'Total', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatAmount(value) }
+  ];
+
+  const gstr3bColumns = useMemo(
+    () => [
+      { field: 'particular', headerName: 'Particular', flex: 1, minWidth: 240 },
+      { field: 'amount', headerName: 'Amount', type: 'number', flex: 0.8, minWidth: 150, valueFormatter: (value) => formatAmount(value) }
+    ],
+    []
+  );
+
+  const hsnColumns = useMemo(
+    () => [
+      { field: 'type', headerName: 'Type', flex: 0.6, minWidth: 120 },
+      { field: 'hsnSac', headerName: 'HSN/SAC', flex: 0.8, minWidth: 140 },
+      { field: 'quantityAmount', headerName: 'Quantity', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => formatAmount(value) },
+      { field: 'taxable', headerName: 'Taxable', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => formatAmount(value) },
+      { field: 'tax', headerName: 'Tax', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => formatAmount(value) },
+      { field: 'total', headerName: 'Total', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => formatAmount(value) }
+    ],
+    []
+  );
 
   return (
     <Grid container spacing={2.75}>
@@ -135,43 +210,14 @@ export default function GstPage() {
 
           {tab === 0 && (
             <GridPanel label="Create Tax Rate" onCreate={openCreateTaxRate}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Code</TableCell>
-                    <TableCell align="right">Rate %</TableCell>
-                    <TableCell align="right">CGST %</TableCell>
-                    <TableCell align="right">SGST %</TableCell>
-                    <TableCell align="right">IGST %</TableCell>
-                    <TableCell align="center">Action</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {taxRates.map((taxRate) => (
-                    <TableRow key={taxRate.id}>
-                      <TableCell>{taxRate.name}</TableCell>
-                      <TableCell>{taxRate.code}</TableCell>
-                      <TableCell align="right">{formatAmount(taxRate.rate)}</TableCell>
-                      <TableCell align="right">{formatAmount(taxRate.cgstRate)}</TableCell>
-                      <TableCell align="right">{formatAmount(taxRate.sgstRate)}</TableCell>
-                      <TableCell align="right">{formatAmount(taxRate.igstRate)}</TableCell>
-                      <TableCell align="center">
-                        <Button size="small" startIcon={<EditOutlined />} onClick={() => openEditTaxRate(taxRate)}>
-                          Edit
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <CommonDataGrid title="Tax Rates" rows={taxRateRows} columns={taxRateColumns} fileName="gst-tax-rates" searchPlaceholder="Search tax rates" />
             </GridPanel>
           )}
 
-          {tab === 1 && <Box sx={{ p: 2.5 }}><InvoiceTaxTable rows={gstr1.invoices} partyKey="customerName" partyLabel="Customer" /></Box>}
-          {tab === 2 && <Box sx={{ p: 2.5 }}><Gstr3bTable summary={gstr3b} /></Box>}
-          {tab === 3 && <Box sx={{ p: 2.5 }}><InvoiceTaxTable rows={itc.invoices} partyKey="vendorName" partyLabel="Vendor" /></Box>}
-          {tab === 4 && <Box sx={{ p: 2.5 }}><HsnSummary hsn={hsn} /></Box>}
+          {tab === 1 && <Box sx={{ p: 2.5 }}><CommonDataGrid title="GSTR-1" rows={gstr1Rows} columns={invoiceTaxColumns('Customer')} fileName="gstr-1" searchPlaceholder="Search invoices" dateField="date" /></Box>}
+          {tab === 2 && <Box sx={{ p: 2.5 }}><CommonDataGrid title="GSTR-3B" rows={gstr3bRows} columns={gstr3bColumns} fileName="gstr-3b" searchPlaceholder="Search particulars" /></Box>}
+          {tab === 3 && <Box sx={{ p: 2.5 }}><CommonDataGrid title="ITC" rows={itcRows} columns={invoiceTaxColumns('Vendor')} fileName="itc" searchPlaceholder="Search invoices" dateField="date" /></Box>}
+          {tab === 4 && <Box sx={{ p: 2.5 }}><CommonDataGrid title="HSN Summary" rows={[...salesHsnRows, ...purchaseHsnRows]} columns={hsnColumns} fileName="hsn-summary" searchPlaceholder="Search HSN" selectFilters={[{ field: 'type', label: 'Type', options: [{ value: 'Sales', label: 'Sales' }, { value: 'Purchase', label: 'Purchase' }] }]} /></Box>}
         </Box>
       </Grid>
 
@@ -206,91 +252,7 @@ function GridPanel({ label, onCreate, children }) {
       <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
         <Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>{label}</Button>
       </Stack>
-      <TableContainer>{children}</TableContainer>
-    </Stack>
-  );
-}
-
-function InvoiceTaxTable({ rows, partyKey, partyLabel }) {
-  return (
-    <Table size="small">
-      <TableHead>
-        <TableRow>
-          <TableCell>Date</TableCell>
-          <TableCell>Invoice</TableCell>
-          <TableCell>{partyLabel}</TableCell>
-          <TableCell align="right">Taxable</TableCell>
-          <TableCell align="right">Tax</TableCell>
-          <TableCell align="right">Total</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow key={row.id}>
-            <TableCell>{row.invoiceDate ? formatDate(row.invoiceDate) : ''}</TableCell>
-            <TableCell>{row.invoiceNo}</TableCell>
-            <TableCell>{row[partyKey]}</TableCell>
-            <TableCell align="right">{formatAmount(row.taxableValue)}</TableCell>
-            <TableCell align="right">{formatAmount(row.taxAmount)}</TableCell>
-            <TableCell align="right">{formatAmount(row.totalAmount)}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-
-function Gstr3bTable({ summary }) {
-  const rows = [
-    ['Outward taxable value', summary.outwardTaxableValue],
-    ['Output tax', summary.outputTax],
-    ['Inward taxable value', summary.inwardTaxableValue],
-    ['Input tax credit', summary.inputTaxCredit],
-    ['Net tax payable', summary.netTaxPayable]
-  ];
-  return (
-    <Table size="small">
-      <TableHead><TableRow><TableCell>Particular</TableCell><TableCell align="right">Amount</TableCell></TableRow></TableHead>
-      <TableBody>{rows.map(([label, amount]) => <TableRow key={label}><TableCell>{label}</TableCell><TableCell align="right">{formatAmount(amount)}</TableCell></TableRow>)}</TableBody>
-    </Table>
-  );
-}
-
-function HsnSummary({ hsn }) {
-  return (
-    <Stack spacing={3}>
-      <HsnTable title="Sales HSN" rows={hsn.sales || []} />
-      <HsnTable title="Purchase HSN" rows={hsn.purchases || []} />
-    </Stack>
-  );
-}
-
-function HsnTable({ title, rows }) {
-  return (
-    <Stack spacing={1.5}>
-      <Box sx={{ fontWeight: 600 }}>{title}</Box>
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>HSN/SAC</TableCell>
-            <TableCell align="right">Quantity</TableCell>
-            <TableCell align="right">Taxable</TableCell>
-            <TableCell align="right">Tax</TableCell>
-            <TableCell align="right">Total</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.hsnSac}>
-              <TableCell>{row.hsnSac}</TableCell>
-              <TableCell align="right">{formatAmount(row.quantity)}</TableCell>
-              <TableCell align="right">{formatAmount(row.taxableValue)}</TableCell>
-              <TableCell align="right">{formatAmount(row.taxAmount)}</TableCell>
-              <TableCell align="right">{formatAmount(row.totalAmount)}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      {children}
     </Stack>
   );
 }

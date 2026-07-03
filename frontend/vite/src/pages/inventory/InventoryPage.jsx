@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -11,17 +11,12 @@ import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 import { formatDate, todayIso } from 'utils/dateFormat';
 
@@ -56,6 +51,9 @@ export default function InventoryPage() {
   const [itemOpen, setItemOpen] = useState(false);
   const [movementOpen, setMovementOpen] = useState(false);
   const [taxOpen, setTaxOpen] = useState(false);
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [itemRefsLoaded, setItemRefsLoaded] = useState(false);
+  const [movementRefsLoaded, setMovementRefsLoaded] = useState(false);
   const [unitForm, setUnitForm] = useState({ name: '', code: '', decimalPlaces: 2 });
   const [groupForm, setGroupForm] = useState({ name: '', code: '' });
   const [itemForm, setItemForm] = useState({ name: '', code: '', unitId: '', groupId: '', hsnSac: '', standardRate: 0, reorderLevel: 0, taxRateId: '', taxEffectiveFrom: todayIso(), taxEffectiveTo: '' });
@@ -64,28 +62,54 @@ export default function InventoryPage() {
 
   const warehouses = companies.flatMap((company) => company.branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch, company }))));
 
-  async function loadData() {
-    const [unitData, groupData, itemData, taxData, companyData, movementData, summaryData] = await Promise.all([
-      api('/inventory/units'),
-      api('/inventory/groups'),
-      api('/inventory/items'),
-      api('/gst/tax-rates'),
-      api('/companies'),
-      api('/inventory/movements'),
-      api('/inventory/reports/stock-summary')
+  async function ensureItemRefs() {
+    if (itemRefsLoaded && units.length && groups.length && taxRates.length) return { unitData: units, groupData: groups, taxData: taxRates };
+    const [unitData, groupData, taxData] = await Promise.all([
+      units.length ? Promise.resolve(units) : api('/inventory/units'),
+      groups.length ? Promise.resolve(groups) : api('/inventory/groups'),
+      taxRates.length ? Promise.resolve(taxRates) : api('/gst/tax-rates')
     ]);
     setUnits(unitData);
     setGroups(groupData);
-    setItems(itemData);
     setTaxRates(taxData);
-    setCompanies(companyData);
-    setMovements(movementData);
-    setSummary(summaryData);
+    setItemRefsLoaded(true);
+    return { unitData, groupData, taxData };
   }
 
-  useEffect(() => {
-    loadData().catch((loadError) => setError(loadError.message));
-  }, []);
+  async function ensureMovementRefs() {
+    if (movementRefsLoaded && items.length && companies.length) return { itemData: items, companyData: companies };
+    const [itemData, companyData] = await Promise.all([
+      items.length ? Promise.resolve(items) : api('/inventory/items'),
+      companies.length ? Promise.resolve(companies) : api('/companies')
+    ]);
+    setItems(itemData);
+    setCompanies(companyData);
+    setMovementRefsLoaded(true);
+    return { itemData, companyData };
+  }
+
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
+    try {
+      setError('');
+      if (tabIndex === 0) setUnits(await api('/inventory/units'));
+      if (tabIndex === 1) setGroups(await api('/inventory/groups'));
+      if (tabIndex === 2) {
+        setItems(await api('/inventory/items'));
+        await ensureItemRefs();
+      }
+      if (tabIndex === 3) {
+        setMovements(await api('/inventory/movements'));
+        await ensureMovementRefs();
+      }
+      if (tabIndex === 4) setSummary(await api('/inventory/reports/stock-summary'));
+      setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
+    } catch (loadError) {
+      setError(loadError.message);
+    }
+  }
+
+  useEffect(() => { loadTabData(tab); }, [tab]);
 
   async function save(action, success, close) {
     try {
@@ -94,11 +118,157 @@ export default function InventoryPage() {
       await action();
       close();
       setMessage(success);
-      await loadData();
+      await loadTabData(tab, true);
     } catch (saveError) {
       setError(saveError.message);
     }
   }
+
+  async function openItemDialog() {
+    const { unitData, groupData, taxData } = await ensureItemRefs();
+    setItemForm({ name: '', code: '', unitId: unitData[0]?.id || '', groupId: groupData[0]?.id || '', hsnSac: '', standardRate: 0, reorderLevel: 0, taxRateId: taxData[0]?.id || '', taxEffectiveFrom: todayIso(), taxEffectiveTo: '' });
+    setItemOpen(true);
+  }
+
+  async function openMovementDialog() {
+    const { itemData, companyData } = await ensureMovementRefs();
+    const freshWarehouses = companyData.flatMap((company) => company.branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch, company }))));
+    setMovementForm({ itemId: itemData[0]?.id || '', warehouseId: freshWarehouses[0]?.id || '', type: 'OPENING', quantity: 0, rate: 0, movementDate: todayIso(), referenceNo: '', narration: '' });
+    setMovementOpen(true);
+  }
+
+  const statusOptions = [{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }];
+  const groupOptions = useMemo(() => groups.map((group) => ({ value: group.name, label: group.name })), [groups]);
+  const unitOptions = useMemo(() => units.map((unit) => ({ value: unit.code, label: unit.code })), [units]);
+  const warehouseOptions = useMemo(
+    () => Array.from(new Set(warehouses.map((warehouse) => warehouse.name))).map((name) => ({ value: name, label: name })),
+    [warehouses]
+  );
+
+  const unitRows = useMemo(
+    () => units.map((unit) => ({ ...unit, statusText: unit.isActive ? 'Active' : 'Inactive' })),
+    [units]
+  );
+
+  const groupRows = useMemo(
+    () =>
+      groups.map((group) => ({
+        ...group,
+        itemNames: group.items?.map((item) => item.name).join(', ') || '-',
+        statusText: group.isActive ? 'Active' : 'Inactive'
+      })),
+    [groups]
+  );
+
+  const itemRows = useMemo(
+    () =>
+      items.map((item) => ({
+        ...item,
+        itemName: `${item.name} ${item.code}`,
+        groupName: item.group?.name || '-',
+        unitCode: item.unit?.code || '-',
+        taxHistory: item.taxRates?.map((entry) => `${entry.taxRate.name}: ${formatDate(entry.effectiveFrom)} to ${entry.effectiveTo ? formatDate(entry.effectiveTo) : 'Open'}`).join(', ') || 'Not configured',
+        rate: Number(item.standardRate || 0),
+        reorder: Number(item.reorderLevel || 0)
+      })),
+    [items]
+  );
+
+  const movementRows = useMemo(
+    () =>
+      movements.map((movement) => ({
+        ...movement,
+        date: movement.movementDate,
+        itemName: movement.item?.name || '-',
+        warehouseName: movement.warehouse?.name || '-',
+        quantityText: `${Number(movement.quantity || 0).toFixed(3)} ${movement.item?.unit?.code || ''}`,
+        amount: Number(movement.amount || 0)
+      })),
+    [movements]
+  );
+
+  const summaryRows = useMemo(
+    () =>
+      summary.map((row) => ({
+        ...row,
+        id: row.itemId,
+        itemText: `${row.itemName} ${row.itemCode}`,
+        groupText: row.groupName || '-',
+        quantityAmount: Number(row.quantity || 0),
+        valueAmount: Number(row.value || 0),
+        reorderAmount: Number(row.reorderLevel || 0),
+        statusText: row.belowReorder ? 'Below reorder' : 'OK'
+      })),
+    [summary]
+  );
+
+  const unitColumns = useMemo(
+    () => [
+      { field: 'name', headerName: 'Name', flex: 1, minWidth: 180 },
+      { field: 'code', headerName: 'Code', flex: 0.7, minWidth: 120 },
+      { field: 'decimalPlaces', headerName: 'Decimals', type: 'number', flex: 0.7, minWidth: 120 },
+      { field: 'statusText', headerName: 'Status', flex: 0.7, minWidth: 120 }
+    ],
+    []
+  );
+
+  const groupColumns = useMemo(
+    () => [
+      { field: 'name', headerName: 'Name', flex: 1, minWidth: 180 },
+      { field: 'code', headerName: 'Code', flex: 0.7, minWidth: 120 },
+      { field: 'itemNames', headerName: 'Items', flex: 1.6, minWidth: 300 },
+      { field: 'statusText', headerName: 'Status', flex: 0.7, minWidth: 120 }
+    ],
+    []
+  );
+
+  const itemColumns = useMemo(
+    () => [
+      { field: 'itemName', headerName: 'Item', flex: 1, minWidth: 210 },
+      { field: 'groupName', headerName: 'Group', flex: 0.9, minWidth: 170 },
+      { field: 'unitCode', headerName: 'Unit', flex: 0.5, minWidth: 100 },
+      { field: 'hsnSac', headerName: 'HSN/SAC', flex: 0.7, minWidth: 130, valueGetter: (value) => value || '-' },
+      { field: 'taxHistory', headerName: 'Tax History', flex: 1.5, minWidth: 300 },
+      { field: 'rate', headerName: 'Rate', type: 'number', flex: 0.7, minWidth: 120, valueFormatter: (value) => Number(value || 0).toFixed(2) },
+      { field: 'reorder', headerName: 'Reorder', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => Number(value || 0).toFixed(3) },
+      {
+        field: 'actions',
+        headerName: 'Action',
+        sortable: false,
+        filterable: false,
+        exportable: false,
+        flex: 0.8,
+        minWidth: 150,
+        renderCell: (params) => <Button size="small" onClick={() => { setTaxForm({ itemId: params.row.id, taxRateId: taxRates[0]?.id || '', effectiveFrom: todayIso(), effectiveTo: '' }); setTaxOpen(true); }}>Add Tax Period</Button>
+      }
+    ],
+    [taxRates]
+  );
+
+  const movementColumns = useMemo(
+    () => [
+      { field: 'date', headerName: 'Date', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatDate(value) },
+      { field: 'itemName', headerName: 'Item', flex: 1, minWidth: 190 },
+      { field: 'warehouseName', headerName: 'Warehouse', flex: 1, minWidth: 180 },
+      { field: 'type', headerName: 'Type', flex: 0.9, minWidth: 170 },
+      { field: 'quantityText', headerName: 'Qty', flex: 0.7, minWidth: 130 },
+      { field: 'amount', headerName: 'Amount', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => Number(value || 0).toFixed(2) }
+    ],
+    []
+  );
+
+  const summaryColumns = useMemo(
+    () => [
+      { field: 'itemText', headerName: 'Item', flex: 1, minWidth: 210 },
+      { field: 'groupText', headerName: 'Group', flex: 0.9, minWidth: 170 },
+      { field: 'unit', headerName: 'Unit', flex: 0.5, minWidth: 100 },
+      { field: 'quantityAmount', headerName: 'Qty', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => Number(value || 0).toFixed(3) },
+      { field: 'valueAmount', headerName: 'Value', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => Number(value || 0).toFixed(2) },
+      { field: 'reorderAmount', headerName: 'Reorder', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => Number(value || 0).toFixed(3) },
+      { field: 'statusText', headerName: 'Status', flex: 0.8, minWidth: 140 }
+    ],
+    []
+  );
 
   return (
     <Grid container spacing={2.75}>
@@ -112,11 +282,11 @@ export default function InventoryPage() {
             <Tab label="Stock Movements" />
             <Tab label="Stock Summary" />
           </Tabs>
-          {tab === 0 && <GridPanel label="Create Unit" onCreate={() => setUnitOpen(true)}><Table size="small"><TableHead><TableRow><TableCell>Name</TableCell><TableCell>Code</TableCell><TableCell>Decimals</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{units.map((unit) => <TableRow key={unit.id}><TableCell>{unit.name}</TableCell><TableCell>{unit.code}</TableCell><TableCell>{unit.decimalPlaces}</TableCell><TableCell>{unit.isActive ? 'Active' : 'Inactive'}</TableCell></TableRow>)}</TableBody></Table></GridPanel>}
-          {tab === 1 && <GridPanel label="Create Item Group" onCreate={() => setGroupOpen(true)}><Table size="small"><TableHead><TableRow><TableCell>Name</TableCell><TableCell>Code</TableCell><TableCell>Items</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{groups.map((group) => <TableRow key={group.id}><TableCell>{group.name}</TableCell><TableCell>{group.code}</TableCell><TableCell>{group.items?.map((item) => item.name).join(', ') || '-'}</TableCell><TableCell>{group.isActive ? 'Active' : 'Inactive'}</TableCell></TableRow>)}</TableBody></Table></GridPanel>}
-          {tab === 2 && <GridPanel label="Create Item" onCreate={() => { setItemForm({ name: '', code: '', unitId: units[0]?.id || '', groupId: groups[0]?.id || '', hsnSac: '', standardRate: 0, reorderLevel: 0, taxRateId: taxRates[0]?.id || '', taxEffectiveFrom: todayIso(), taxEffectiveTo: '' }); setItemOpen(true); }}><Table size="small"><TableHead><TableRow><TableCell>Item</TableCell><TableCell>Group</TableCell><TableCell>Unit</TableCell><TableCell>HSN/SAC</TableCell><TableCell>Tax History</TableCell><TableCell align="right">Rate</TableCell><TableCell align="right">Reorder</TableCell><TableCell>Action</TableCell></TableRow></TableHead><TableBody>{items.map((item) => <TableRow key={item.id}><TableCell>{item.name}<br />{item.code}</TableCell><TableCell>{item.group?.name || '-'}</TableCell><TableCell>{item.unit.code}</TableCell><TableCell>{item.hsnSac || '-'}</TableCell><TableCell>{item.taxRates?.map((entry) => `${entry.taxRate.name}: ${formatDate(entry.effectiveFrom)} to ${entry.effectiveTo ? formatDate(entry.effectiveTo) : '' || 'Open'}`).join(', ') || 'Not configured'}</TableCell><TableCell align="right">{Number(item.standardRate).toFixed(2)}</TableCell><TableCell align="right">{Number(item.reorderLevel).toFixed(3)}</TableCell><TableCell><Button size="small" onClick={() => { setTaxForm({ itemId: item.id, taxRateId: taxRates[0]?.id || '', effectiveFrom: todayIso(), effectiveTo: '' }); setTaxOpen(true); }}>Add Tax Period</Button></TableCell></TableRow>)}</TableBody></Table></GridPanel>}
-          {tab === 3 && <GridPanel label="Create Movement" onCreate={() => { setMovementForm({ itemId: items[0]?.id || '', warehouseId: warehouses[0]?.id || '', type: 'OPENING', quantity: 0, rate: 0, movementDate: todayIso(), referenceNo: '', narration: '' }); setMovementOpen(true); }}><Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Item</TableCell><TableCell>Warehouse</TableCell><TableCell>Type</TableCell><TableCell align="right">Qty</TableCell><TableCell align="right">Amount</TableCell></TableRow></TableHead><TableBody>{movements.map((movement) => <TableRow key={movement.id}><TableCell>{formatDate(movement.movementDate)}</TableCell><TableCell>{movement.item.name}</TableCell><TableCell>{movement.warehouse.name}</TableCell><TableCell>{movement.type}</TableCell><TableCell align="right">{Number(movement.quantity).toFixed(3)} {movement.item.unit.code}</TableCell><TableCell align="right">{Number(movement.amount).toFixed(2)}</TableCell></TableRow>)}</TableBody></Table></GridPanel>}
-          {tab === 4 && <Box sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Item</TableCell><TableCell>Group</TableCell><TableCell>Unit</TableCell><TableCell align="right">Qty</TableCell><TableCell align="right">Value</TableCell><TableCell align="right">Reorder</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{summary.map((row) => <TableRow key={row.itemId}><TableCell>{row.itemName}<br />{row.itemCode}</TableCell><TableCell>{row.groupName || '-'}</TableCell><TableCell>{row.unit}</TableCell><TableCell align="right">{row.quantity.toFixed(3)}</TableCell><TableCell align="right">{row.value.toFixed(2)}</TableCell><TableCell align="right">{row.reorderLevel.toFixed(3)}</TableCell><TableCell>{row.belowReorder ? 'Below reorder' : 'OK'}</TableCell></TableRow>)}</TableBody></Table></Box>}
+          {tab === 0 && <GridPanel label="Create Unit" onCreate={() => setUnitOpen(true)}><CommonDataGrid title="Units" rows={unitRows} columns={unitColumns} fileName="inventory-units" searchPlaceholder="Search units" selectFilters={[{ field: 'statusText', label: 'Status', options: statusOptions }]} /></GridPanel>}
+          {tab === 1 && <GridPanel label="Create Item Group" onCreate={() => setGroupOpen(true)}><CommonDataGrid title="Item Groups" rows={groupRows} columns={groupColumns} fileName="inventory-item-groups" searchPlaceholder="Search item groups" selectFilters={[{ field: 'statusText', label: 'Status', options: statusOptions }]} /></GridPanel>}
+          {tab === 2 && <GridPanel label="Create Item" onCreate={openItemDialog}><CommonDataGrid title="Items" rows={itemRows} columns={itemColumns} fileName="inventory-items" searchPlaceholder="Search items" selectFilters={[{ field: 'groupName', label: 'Group', options: groupOptions }, { field: 'unitCode', label: 'Unit', options: unitOptions }]} /></GridPanel>}
+          {tab === 3 && <GridPanel label="Create Movement" onCreate={openMovementDialog}><CommonDataGrid title="Stock Movements" rows={movementRows} columns={movementColumns} fileName="stock-movements" searchPlaceholder="Search movements" dateField="date" selectFilters={[{ field: 'type', label: 'Movement Type', options: movementTypes.map((type) => ({ value: type, label: type })) }, { field: 'warehouseName', label: 'Warehouse', options: warehouseOptions }]} /></GridPanel>}
+          {tab === 4 && <Box sx={{ p: 2.5 }}><CommonDataGrid title="Stock Summary" rows={summaryRows} columns={summaryColumns} fileName="stock-summary" searchPlaceholder="Search stock" selectFilters={[{ field: 'groupText', label: 'Group', options: Array.from(new Set(summaryRows.map((row) => row.groupText))).map((group) => ({ value: group, label: group })) }, { field: 'unit', label: 'Unit', options: Array.from(new Set(summaryRows.map((row) => row.unit))).map((unit) => ({ value: unit, label: unit })) }, { field: 'statusText', label: 'Status', options: [{ value: 'OK', label: 'OK' }, { value: 'Below reorder', label: 'Below reorder' }] }]} /></Box>}
         </Box>
       </Grid>
 
@@ -130,7 +300,7 @@ export default function InventoryPage() {
 }
 
 function GridPanel({ label, onCreate, children }) {
-  return <Stack spacing={2.5} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'flex-end' }}><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>{label}</Button></Stack><TableContainer>{children}</TableContainer></Stack>;
+  return <Stack spacing={2.5} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'flex-end' }}><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>{label}</Button></Stack>{children}</Stack>;
 }
 
 function SimpleDialog({ open, title, onClose, onSubmit, children }) {

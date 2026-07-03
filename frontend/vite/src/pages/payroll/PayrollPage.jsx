@@ -14,12 +14,6 @@ import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -27,6 +21,7 @@ import Typography from '@mui/material/Typography';
 import DollarOutlined from '@ant-design/icons/DollarOutlined';
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 import { formatDate, todayIso } from 'utils/dateFormat';
 
@@ -79,18 +74,18 @@ export default function PayrollPage() {
   });
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [branchesLoaded, setBranchesLoaded] = useState(false);
 
   const branches = useMemo(() => companies.flatMap((company) => company.branches.map((branch) => ({ ...branch, company }))), [companies]);
   const attendanceByEmployee = useMemo(() => new Map(attendance.map((row) => [row.employeeId, row])), [attendance]);
 
-  async function loadBase() {
-    const [dashboardData, employeeData, runData, companyData] = await Promise.all([
-      api('/payroll/dashboard'), api('/payroll/employees'), api('/payroll/runs'), api('/companies')
-    ]);
-    setDashboard(dashboardData);
-    setEmployees(employeeData);
-    setRuns(runData);
+  async function ensureBranches() {
+    if (branchesLoaded && companies.length) return companies;
+    const companyData = await api('/companies');
     setCompanies(companyData);
+    setBranchesLoaded(true);
+    return companyData;
   }
 
   async function loadPeriod() {
@@ -103,8 +98,35 @@ export default function PayrollPage() {
     setPreview(previewData);
   }
 
-  useEffect(() => { loadBase().catch((loadError) => setError(loadError.message)); }, []);
-  useEffect(() => { loadPeriod().catch((loadError) => setError(loadError.message)); }, [period.year, period.month, runForm.branchId]);
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
+    try {
+      setError('');
+      if (tabIndex === 0) {
+        const [dashboardData, runData] = await Promise.all([api('/payroll/dashboard'), api('/payroll/runs')]);
+        setDashboard(dashboardData);
+        setRuns(runData);
+      }
+      if (tabIndex === 1 || tabIndex === 2) {
+        setEmployees(await api('/payroll/employees'));
+        if (tabIndex === 1) await ensureBranches();
+        if (tabIndex === 2) await loadPeriod();
+      }
+      if (tabIndex === 3) {
+        await ensureBranches();
+        await loadPeriod();
+      }
+      if (tabIndex === 4) setRuns(await api('/payroll/runs'));
+      setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
+    } catch (loadError) {
+      setError(loadError.message);
+    }
+  }
+
+  useEffect(() => { loadTabData(tab); }, [tab]);
+  useEffect(() => {
+    if (tab === 2 || tab === 3) loadPeriod().catch((loadError) => setError(loadError.message));
+  }, [period.year, period.month, runForm.branchId]);
 
   async function save(action, success, close) {
     try {
@@ -113,10 +135,17 @@ export default function PayrollPage() {
       await action();
       close();
       setMessage(success);
-      await Promise.all([loadBase(), loadPeriod()]);
+      await loadTabData(tab, true);
     } catch (saveError) {
       setError(saveError.message);
     }
+  }
+
+  async function openEmployeeDialog() {
+    const companyData = await ensureBranches();
+    const branchData = companyData.flatMap((company) => company.branches.map((branch) => ({ ...branch, company })));
+    setEmployeeForm({ ...emptyEmployee, branchId: branchData[0]?.id || '' });
+    setEmployeeOpen(true);
   }
 
   function openSalary(employee) {
@@ -157,10 +186,7 @@ export default function PayrollPage() {
             <Typography color="text.secondary">Employees, effective salary structures, attendance, statutory deductions and accounting.</Typography>
           </Box>
           <Stack direction="row" spacing={1}>
-            <Button variant="outlined" startIcon={<PlusOutlined />} onClick={() => {
-              setEmployeeForm({ ...emptyEmployee, branchId: branches[0]?.id || '' });
-              setEmployeeOpen(true);
-            }}>New Employee</Button>
+            <Button variant="outlined" startIcon={<PlusOutlined />} onClick={openEmployeeDialog}>New Employee</Button>
             <Button variant="contained" startIcon={<DollarOutlined />} onClick={() => setTab(3)}>Process Payroll</Button>
           </Stack>
         </Stack>
@@ -248,11 +274,12 @@ function Dashboard({ dashboard, runs }) {
 }
 
 function EmployeeTable({ employees, onSalary }) {
-  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Employee</TableCell><TableCell>Department / Designation</TableCell><TableCell>Branch</TableCell><TableCell>Joining</TableCell><TableCell>Current Gross</TableCell><TableCell>Status</TableCell><TableCell align="right">Action</TableCell></TableRow></TableHead><TableBody>{employees.map((employee) => {
+  const rows = employees.map((employee) => {
     const salary = employee.salaryStructures[0];
     const gross = salary ? ['basic', 'hra', 'specialAllowance', 'conveyanceAllowance', 'otherAllowance'].reduce((sum, key) => sum + Number(salary[key]), 0) : 0;
-    return <TableRow key={employee.id}><TableCell>{employee.firstName} {employee.lastName}<br /><Typography variant="caption">{employee.employeeCode}</Typography></TableCell><TableCell>{employee.department || '-'}<br />{employee.designation || '-'}</TableCell><TableCell>{employee.branch.name}</TableCell><TableCell>{formatDate(employee.dateOfJoining)}</TableCell><TableCell>{salary ? money(gross) : <Chip size="small" color="warning" label="Not assigned" />}</TableCell><TableCell><Chip size="small" color={employee.status === 'ACTIVE' ? 'success' : 'default'} label={employee.status} /></TableCell><TableCell align="right"><Button size="small" onClick={() => onSalary(employee)}>Add Salary Revision</Button></TableCell></TableRow>;
-  })}</TableBody></Table></TableContainer>;
+    return { ...employee, employeeText: `${employee.firstName} ${employee.lastName} | ${employee.employeeCode}`, departmentText: `${employee.department || '-'} / ${employee.designation || '-'}`, branchName: employee.branch.name, joiningText: formatDate(employee.dateOfJoining), grossText: salary ? money(gross) : 'Not assigned', salaryStatus: salary ? 'Assigned' : 'Not assigned' };
+  });
+  return <CommonDataGrid title="Employees" rows={rows} columns={[{ field: 'employeeText', headerName: 'Employee', flex: 1.2, minWidth: 220 }, { field: 'departmentText', headerName: 'Department / Designation', flex: 1, minWidth: 190 }, { field: 'branchName', headerName: 'Branch', flex: 1, minWidth: 150 }, { field: 'joiningText', headerName: 'Joining', width: 130 }, { field: 'grossText', headerName: 'Current Gross', width: 150 }, { field: 'status', headerName: 'Status', width: 120, renderCell: ({ value }) => <Chip size="small" color={value === 'ACTIVE' ? 'success' : 'default'} label={value} /> }, { field: 'action', headerName: 'Action', width: 190, sortable: false, filterable: false, renderCell: ({ row }) => <Button size="small" onClick={() => onSalary(row)}>Add Salary Revision</Button> }]} searchPlaceholder="Search employee, code, branch, or designation" dateField="dateOfJoining" selectFilters={[{ field: 'branchName', label: 'Branch' }, { field: 'department', label: 'Department' }, { field: 'status', label: 'Status' }, { field: 'salaryStatus', label: 'Salary' }]} fileName="payroll-employees" />;
 }
 
 function PeriodFields({ period, setPeriod }) {
@@ -260,17 +287,18 @@ function PeriodFields({ period, setPeriod }) {
 }
 
 function AttendancePanel({ employees, attendanceByEmployee, period, setPeriod, onEdit }) {
-  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction={{ xs: 'column', sm: 'row' }} sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' } }}><Typography variant="h5">Attendance Register</Typography><PeriodFields period={period} setPeriod={setPeriod} /></Stack><Table size="small"><TableHead><TableRow><TableCell>Employee</TableCell><TableCell align="right">Working Days</TableCell><TableCell align="right">Payable Days</TableCell><TableCell align="right">Overtime</TableCell><TableCell>Status</TableCell><TableCell align="right">Action</TableCell></TableRow></TableHead><TableBody>{employees.filter((employee) => employee.status === 'ACTIVE').map((employee) => {
+  const rows = employees.filter((employee) => employee.status === 'ACTIVE').map((employee) => {
     const row = attendanceByEmployee.get(employee.id);
-    return <TableRow key={employee.id}><TableCell>{employee.employeeCode} - {employee.firstName} {employee.lastName}</TableCell><TableCell align="right">{row ? Number(row.workingDays).toFixed(2) : '-'}</TableCell><TableCell align="right">{row ? Number(row.payableDays).toFixed(2) : '-'}</TableCell><TableCell align="right">{row ? `${Number(row.overtimeHours).toFixed(2)} hrs / ${money(row.overtimeAmount)}` : '-'}</TableCell><TableCell><Chip size="small" color={row ? 'success' : 'warning'} label={row ? 'Ready' : 'Pending'} /></TableCell><TableCell align="right"><Button size="small" variant="outlined" onClick={() => onEdit(employee)}>{row ? 'Edit' : 'Enter'}</Button></TableCell></TableRow>;
-  })}</TableBody></Table></Stack>;
+    return { ...employee, employeeText: `${employee.employeeCode} - ${employee.firstName} ${employee.lastName}`, branchName: employee.branch.name, workingDaysText: row ? Number(row.workingDays).toFixed(2) : '-', payableDaysText: row ? Number(row.payableDays).toFixed(2) : '-', overtimeText: row ? `${Number(row.overtimeHours).toFixed(2)} hrs / ${money(row.overtimeAmount)}` : '-', attendanceStatus: row ? 'Ready' : 'Pending' };
+  });
+  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction={{ xs: 'column', sm: 'row' }} sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' } }}><Typography variant="h5">Attendance Register</Typography><PeriodFields period={period} setPeriod={setPeriod} /></Stack><CommonDataGrid title="Attendance Register" rows={rows} columns={[{ field: 'employeeText', headerName: 'Employee', flex: 1.2, minWidth: 220 }, { field: 'workingDaysText', headerName: 'Working Days', width: 140, align: 'right', headerAlign: 'right' }, { field: 'payableDaysText', headerName: 'Payable Days', width: 140, align: 'right', headerAlign: 'right' }, { field: 'overtimeText', headerName: 'Overtime', width: 180, align: 'right', headerAlign: 'right' }, { field: 'attendanceStatus', headerName: 'Status', width: 130, renderCell: ({ value }) => <Chip size="small" color={value === 'Ready' ? 'success' : 'warning'} label={value} /> }, { field: 'action', headerName: 'Action', width: 120, sortable: false, filterable: false, renderCell: ({ row }) => <Button size="small" variant="outlined" onClick={() => onEdit(row)}>{row.attendanceStatus === 'Ready' ? 'Edit' : 'Enter'}</Button> }]} searchPlaceholder="Search employee or branch" selectFilters={[{ field: 'branchName', label: 'Branch' }, { field: 'attendanceStatus', label: 'Status' }]} fileName="attendance-register" /></Stack>;
 }
 
 function ProcessingPanel({ period, setPeriod, preview, runForm, setRunForm, branches, onProcess }) {
   return <Stack spacing={2.5} sx={{ p: 2.5 }}>
     <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { md: 'center' } }}><Box><Typography variant="h5">Payroll Preview</Typography><Typography color="text.secondary">Only employees with an effective salary structure and attendance are included.</Typography></Box><PeriodFields period={period} setPeriod={setPeriod} /></Stack>
     <Grid container spacing={2}>{[['Gross Earnings', preview.totals.grossEarnings], ['Deductions', preview.totals.totalDeductions], ['Net Pay', preview.totals.netPay]].map(([label, value]) => <Grid key={label} size={{ xs: 12, md: 4 }}><Card variant="outlined"><CardContent><Typography color="text.secondary">{label}</Typography><Typography variant="h3">{money(value)}</Typography></CardContent></Card></Grid>)}</Grid>
-    <TableContainer><Table size="small"><TableHead><TableRow><TableCell>Employee</TableCell><TableCell align="right">Days</TableCell><TableCell align="right">Gross</TableCell><TableCell align="right">PF</TableCell><TableCell align="right">ESI</TableCell><TableCell align="right">PT / TDS</TableCell><TableCell align="right">Net Pay</TableCell></TableRow></TableHead><TableBody>{preview.lines.map((line) => <TableRow key={line.employeeId}><TableCell>{line.employeeCode} - {line.employeeName}<br />{line.designation}</TableCell><TableCell align="right">{line.payableDays}/{line.workingDays}</TableCell><TableCell align="right">{money(line.grossEarnings)}</TableCell><TableCell align="right">{money(line.providentFund)}</TableCell><TableCell align="right">{money(line.esi)}</TableCell><TableCell align="right">{money(line.professionalTax + line.tds)}</TableCell><TableCell align="right"><strong>{money(line.netPay)}</strong></TableCell></TableRow>)}</TableBody></Table></TableContainer>
+    <CommonDataGrid title="Payroll Preview" rows={preview.lines.map((line) => ({ ...line, employeeText: `${line.employeeCode} - ${line.employeeName}`, daysText: `${line.payableDays}/${line.workingDays}`, grossText: money(line.grossEarnings), pfText: money(line.providentFund), esiText: money(line.esi), ptTdsText: money(line.professionalTax + line.tds), netText: money(line.netPay) }))} columns={[{ field: 'employeeText', headerName: 'Employee', flex: 1.2, minWidth: 220 }, { field: 'designation', headerName: 'Designation', flex: 1, minWidth: 160 }, { field: 'daysText', headerName: 'Days', width: 100, align: 'right', headerAlign: 'right' }, { field: 'grossText', headerName: 'Gross', width: 140, align: 'right', headerAlign: 'right' }, { field: 'pfText', headerName: 'PF', width: 120, align: 'right', headerAlign: 'right' }, { field: 'esiText', headerName: 'ESI', width: 120, align: 'right', headerAlign: 'right' }, { field: 'ptTdsText', headerName: 'PT / TDS', width: 140, align: 'right', headerAlign: 'right' }, { field: 'netText', headerName: 'Net Pay', width: 150, align: 'right', headerAlign: 'right' }]} getRowId={(row) => row.employeeId} searchPlaceholder="Search employee or designation" selectFilters={[{ field: 'designation', label: 'Designation' }]} fileName="payroll-preview" />
     <Card variant="outlined"><CardContent><Typography variant="h5" sx={{ mb: 2 }}>Post Payroll</Typography><Grid container spacing={2}><Grid size={{ xs: 12, md: 3 }}><TextField fullWidth label="Run No" value={runForm.runNo} onChange={(e) => setRunForm({ ...runForm, runNo: e.target.value })} /></Grid><Grid size={{ xs: 12, md: 3 }}><DateField fullWidth label="Payment Date" value={runForm.paymentDate} onChange={(e) => setRunForm({ ...runForm, paymentDate: e.target.value })} /></Grid><Grid size={{ xs: 12, md: 3 }}><TextField select fullWidth label="Branch Scope" value={runForm.branchId} onChange={(e) => setRunForm({ ...runForm, branchId: e.target.value })}><MenuItem value="">All Branches</MenuItem>{branches.map((branch) => <MenuItem key={branch.id} value={branch.id}>{branch.name}</MenuItem>)}</TextField></Grid><Grid size={{ xs: 12, md: 3 }}><Button fullWidth variant="contained" size="large" disabled={!preview.lines.length} onClick={onProcess}>Process & Post</Button></Grid></Grid></CardContent></Card>
   </Stack>;
 }
@@ -280,7 +308,8 @@ function RunHistory({ runs }) {
 }
 
 function RunTable({ runs, details = false }) {
-  return <TableContainer><Table size="small"><TableHead><TableRow><TableCell>Run</TableCell><TableCell>Period</TableCell><TableCell>Branch</TableCell><TableCell align="right">Employees</TableCell><TableCell align="right">Gross</TableCell><TableCell align="right">Deductions</TableCell><TableCell align="right">Net Pay</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{runs.map((run) => <TableRow key={run.id}><TableCell>{run.runNo}<br />{details && <Typography variant="caption">Paid {formatDate(run.paymentDate)}</Typography>}</TableCell><TableCell>{monthName(run.month)} {run.year}</TableCell><TableCell>{run.branch?.name || 'All Branches'}</TableCell><TableCell align="right">{run.payslips.length}</TableCell><TableCell align="right">{money(run.totalGross)}</TableCell><TableCell align="right">{money(run.totalDeductions)}</TableCell><TableCell align="right">{money(run.totalNet)}</TableCell><TableCell><Chip size="small" color={run.status === 'PROCESSED' ? 'success' : 'default'} label={run.status} /></TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  const rows = runs.map((run) => ({ ...run, runText: details ? `${run.runNo} | Paid ${formatDate(run.paymentDate)}` : run.runNo, periodText: `${monthName(run.month)} ${run.year}`, branchName: run.branch?.name || 'All Branches', employeesText: run.payslips.length, grossText: money(run.totalGross), deductionsText: money(run.totalDeductions), netText: money(run.totalNet) }));
+  return <CommonDataGrid title={details ? 'Payroll Runs and Payslips' : 'Recent Payroll Runs'} rows={rows} columns={[{ field: 'runText', headerName: 'Run', flex: 1, minWidth: 180 }, { field: 'periodText', headerName: 'Period', width: 150 }, { field: 'branchName', headerName: 'Branch', flex: 1, minWidth: 150 }, { field: 'employeesText', headerName: 'Employees', width: 120, align: 'right', headerAlign: 'right' }, { field: 'grossText', headerName: 'Gross', width: 140, align: 'right', headerAlign: 'right' }, { field: 'deductionsText', headerName: 'Deductions', width: 140, align: 'right', headerAlign: 'right' }, { field: 'netText', headerName: 'Net Pay', width: 150, align: 'right', headerAlign: 'right' }, { field: 'status', headerName: 'Status', width: 130, renderCell: ({ value }) => <Chip size="small" color={value === 'PROCESSED' ? 'success' : 'default'} label={value} /> }]} searchPlaceholder="Search run, period, or branch" dateField="paymentDate" selectFilters={[{ field: 'periodText', label: 'Period' }, { field: 'branchName', label: 'Branch' }, { field: 'status', label: 'Status' }]} fileName="payroll-runs" height={details ? 520 : 360} pageSize={25} />;
 }
 
 

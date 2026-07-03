@@ -11,12 +11,6 @@ import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -28,6 +22,7 @@ import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import ArrowRightOutlined from '@ant-design/icons/ArrowRightOutlined';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 import { formatDate, todayIso } from 'utils/dateFormat';
 
@@ -48,6 +43,7 @@ async function api(path, options) {
 const natures = ['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE'];
 const dc = ['DEBIT', 'CREDIT'];
 const ledgerTypes = ['GENERAL', 'CASH', 'BANK', 'CAPITAL', 'CUSTOMER', 'VENDOR', 'TAX', 'EXPENSE', 'INCOME'];
+const budgetFlows = ['UTILIZATION', 'RECEIPT'];
 
 export default function AccountingPage() {
   const navigate = useNavigate();
@@ -56,15 +52,26 @@ export default function AccountingPage() {
   const [groups, setGroups] = useState([]);
   const [ledgers, setLedgers] = useState([]);
   const [voucherTypes, setVoucherTypes] = useState([]);
+  const [budgets, setBudgets] = useState([]);
   const [vouchers, setVouchers] = useState([]);
   const [trialBalance, setTrialBalance] = useState([]);
   const [ledgerReport, setLedgerReport] = useState(null);
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
+  const [ledgersLoaded, setLedgersLoaded] = useState(false);
+  const [voucherTypesLoaded, setVoucherTypesLoaded] = useState(false);
+  const [budgetsLoaded, setBudgetsLoaded] = useState(false);
+  const [vouchersLoaded, setVouchersLoaded] = useState(false);
+  const [trialBalanceLoaded, setTrialBalanceLoaded] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [groupOpen, setGroupOpen] = useState(false);
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [voucherOpen, setVoucherOpen] = useState(false);
   const [voucherTypeOpen, setVoucherTypeOpen] = useState(false);
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const [grantOpen, setGrantOpen] = useState(false);
+  const [voucherBudgetOpen, setVoucherBudgetOpen] = useState(false);
   const [groupForm, setGroupForm] = useState({ name: '', code: '', nature: 'ASSET' });
   const [ledgerForm, setLedgerForm] = useState({
     name: '',
@@ -82,6 +89,9 @@ export default function AccountingPage() {
     voucherTypeId: '',
     voucherNo: '',
     voucherDate: todayIso(),
+    budgetTypeId: '',
+    budgetGrantId: '',
+    budgetFlow: 'UTILIZATION',
     narration: '',
     lines: [
       { ledgerId: '', type: 'DEBIT', amount: 0, narration: '' },
@@ -98,6 +108,33 @@ export default function AccountingPage() {
     suffix: '',
     isActive: true
   });
+  const [budgetForm, setBudgetForm] = useState({
+    name: '',
+    code: '',
+    category: 'ANNUAL',
+    totalAmount: 0,
+    isAnnual: false,
+    isActive: true,
+    createGrant: false,
+    grantName: '',
+    grantCode: '',
+    grantAmount: 0,
+    grantIsDefault: true,
+    grantIsActive: true
+  });
+  const [grantForm, setGrantForm] = useState({
+    budgetTypeId: '',
+    name: '',
+    code: '',
+    amount: 0,
+    isDefault: false,
+    isActive: true
+  });
+  const [voucherBudgetForm, setVoucherBudgetForm] = useState({
+    budgetTypeId: '',
+    budgetGrantId: '',
+    budgetFlow: 'UTILIZATION'
+  });
   const [selectedLedgerId, setSelectedLedgerId] = useState('');
   const [voucherTypeFilter, setVoucherTypeFilter] = useState('');
   const [selectedVoucher, setSelectedVoucher] = useState(null);
@@ -109,56 +146,129 @@ export default function AccountingPage() {
     }),
     [voucherForm.lines]
   );
-  const filteredVouchers = useMemo(
-    () => voucherTypeFilter ? vouchers.filter((voucher) => voucher.voucherType === voucherTypeFilter) : vouchers,
-    [vouchers, voucherTypeFilter]
-  );
-
-  async function loadData() {
-    const [groupData, ledgerData, voucherTypeData, voucherData, trialData] = await Promise.all([
-      api('/accounting/groups'),
-      api('/accounting/ledgers'),
-      api('/accounting/voucher-types'),
-      api('/accounting/vouchers'),
-      api('/accounting/reports/trial-balance')
-    ]);
-    setGroups(groupData);
-    setLedgers(ledgerData);
-    setVoucherTypes(voucherTypeData);
-    setVouchers(voucherData);
-    setTrialBalance(trialData);
-    setSelectedLedgerId((current) => current || ledgerData[0]?.id || '');
+  function applyBudgets(budgetData) {
+    setBudgets(budgetData);
+    const annualBudget = budgetData.find((budget) => budget.isAnnual) || budgetData[0] || null;
+    setVoucherForm((current) => ({
+      ...current,
+      budgetTypeId: current.budgetTypeId && budgetData.some((budget) => budget.id === current.budgetTypeId) ? current.budgetTypeId : annualBudget?.id || '',
+      budgetGrantId: current.budgetGrantId && budgetData.some((budget) => budget.grants?.some((grant) => grant.id === current.budgetGrantId)) ? current.budgetGrantId : '',
+      budgetFlow: current.budgetFlow || 'UTILIZATION'
+    }));
   }
 
-  useEffect(() => {
-    loadData().catch((loadError) => setError(loadError.message));
-  }, []);
+  async function ensureGroups(force = false) {
+    if (!force && groupsLoaded && groups.length) return groups;
+    const groupData = await api('/accounting/groups');
+    setGroups(groupData);
+    setGroupsLoaded(true);
+    return groupData;
+  }
 
-  useEffect(() => {
-    if (!ledgers.length) return;
+  async function ensureLedgers(force = false) {
+    if (!force && ledgersLoaded && ledgers.length) return ledgers;
+    const ledgerData = await api('/accounting/ledgers');
+    setLedgers(ledgerData);
+    setLedgersLoaded(true);
+    setSelectedLedgerId((current) => current || ledgerData[0]?.id || '');
+    return ledgerData;
+  }
+
+  async function ensureVoucherTypes(force = false) {
+    if (!force && voucherTypesLoaded && voucherTypes.length) return voucherTypes;
+    const voucherTypeData = await api('/accounting/voucher-types');
+    setVoucherTypes(voucherTypeData);
+    setVoucherTypesLoaded(true);
+    return voucherTypeData;
+  }
+
+  async function ensureBudgets(force = false) {
+    if (!force && budgetsLoaded && budgets.length) return budgets;
+    const budgetData = await api('/accounting/budgets');
+    applyBudgets(budgetData);
+    setBudgetsLoaded(true);
+    return budgetData;
+  }
+
+  async function ensureVouchers(force = false) {
+    if (!force && vouchersLoaded && vouchers.length) return vouchers;
+    const voucherData = await api('/accounting/vouchers');
+    setVouchers(voucherData);
+    setVouchersLoaded(true);
+    if (selectedVoucher) {
+      setSelectedVoucher(voucherData.find((voucher) => voucher.id === selectedVoucher.id) || selectedVoucher);
+    }
+    return voucherData;
+  }
+
+  async function ensureTrialBalance(force = false) {
+    if (!force && trialBalanceLoaded && trialBalance.length) return trialBalance;
+    const trialData = await api('/accounting/reports/trial-balance');
+    setTrialBalance(trialData);
+    setTrialBalanceLoaded(true);
+    return trialData;
+  }
+
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
+    setError('');
+    if (tabIndex === 0) await ensureGroups(force);
+    if (tabIndex === 1) await Promise.all([ensureLedgers(force), ensureGroups(force)]);
+    if (tabIndex === 2) await ensureVoucherTypes(force);
+    if (tabIndex === 3 || tabIndex === 5) await Promise.all([ensureVouchers(force), ensureVoucherTypes(force), ensureBudgets(force)]);
+    if (tabIndex === 4) await ensureTrialBalance(force);
+    if (tabIndex === 6) {
+      const ledgerData = await ensureLedgers(force);
+      await ensureVouchers(force);
+      const ledgerId = selectedLedgerId || ledgerData[0]?.id || '';
+      if (ledgerId && (force || !ledgerReport || ledgerReport.ledger?.id !== ledgerId)) await loadLedgerReport(ledgerId);
+    }
+    if (tabIndex === 7) await ensureBudgets(force);
+    setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
+  }
+
+  async function refreshAccountingTab(tabIndex = tab) {
+    await loadTabData(tabIndex, true);
+    if (tabIndex === 6 && selectedLedgerId) await loadLedgerReport(selectedLedgerId);
+  }
+
+  async function handleSearchParams() {
     const ledgerId = searchParams.get('ledger');
     const voucherType = searchParams.get('voucherType');
     const voucherId = searchParams.get('voucher');
-    if (ledgerId && ledgers.some((ledger) => ledger.id === ledgerId)) {
-      setSelectedLedgerId(ledgerId);
-      setVoucherTypeFilter('');
-      setSelectedVoucher(null);
-      setTab(6);
-      loadLedgerReport(ledgerId).catch((loadError) => setError(loadError.message));
+    if (ledgerId) {
+      const ledgerData = await ensureLedgers();
+      if (ledgerData.some((ledger) => ledger.id === ledgerId)) {
+        setSelectedLedgerId(ledgerId);
+        setVoucherTypeFilter('');
+        setSelectedVoucher(null);
+        setTab(6);
+        await Promise.all([ensureVouchers(), loadLedgerReport(ledgerId)]);
+      }
       return;
     }
     if (voucherType) {
       setVoucherTypeFilter(voucherType);
       setSelectedVoucher(null);
       setTab(3);
+      await loadTabData(3);
       return;
     }
     if (voucherId) {
-      setSelectedVoucher(vouchers.find((voucher) => voucher.id === voucherId) || null);
+      const voucherData = await ensureVouchers();
+      setSelectedVoucher(voucherData.find((voucher) => voucher.id === voucherId) || null);
       return;
     }
     setSelectedVoucher(null);
-  }, [searchParams, ledgers, vouchers]);
+  }
+
+  useEffect(() => {
+    loadTabData(tab).catch((loadError) => setError(loadError.message));
+  }, [tab]);
+
+  useEffect(() => {
+    handleSearchParams().catch((loadError) => setError(loadError.message));
+  }, [searchParams]);
 
   async function save(action, success, close) {
     try {
@@ -167,7 +277,7 @@ export default function AccountingPage() {
       await action();
       close();
       setMessage(success);
-      await loadData();
+      await refreshAccountingTab();
     } catch (saveError) {
       setError(saveError.message);
     }
@@ -182,6 +292,71 @@ export default function AccountingPage() {
 
   function addLine() {
     setVoucherForm((current) => ({ ...current, lines: [...current.lines, { ledgerId: '', type: 'DEBIT', amount: 0, narration: '' }] }));
+  }
+
+  function getBudgetById(budgetTypeId) {
+    return budgets.find((budget) => budget.id === budgetTypeId) || budgets.find((budget) => budget.isAnnual) || budgets[0] || null;
+  }
+
+  function syncGrantWithBudget(budgetTypeId, grantId = '') {
+    const budget = getBudgetById(budgetTypeId);
+    const grant = budget?.grants?.find((item) => item.id === grantId) || budget?.grants?.find((item) => item.isDefault) || budget?.grants?.[0];
+    return {
+      budgetTypeId: budget?.id || '',
+      budgetGrantId: grant?.id || ''
+    };
+  }
+
+  function updateVoucherBudgetField(key, value) {
+    setVoucherForm((current) => {
+      const next = { ...current, [key]: value };
+      if (key === 'budgetTypeId') {
+        const synced = syncGrantWithBudget(value, current.budgetGrantId);
+        next.budgetTypeId = synced.budgetTypeId;
+        next.budgetGrantId = synced.budgetGrantId;
+      }
+      return next;
+    });
+  }
+
+  function openBudgetDialog() {
+    setBudgetForm({
+      name: '',
+      code: '',
+      category: 'ANNUAL',
+      totalAmount: 0,
+      isAnnual: false,
+      isActive: true,
+      createGrant: false,
+      grantName: '',
+      grantCode: '',
+      grantAmount: 0,
+      grantIsDefault: true,
+      grantIsActive: true
+    });
+    setBudgetOpen(true);
+  }
+
+  function openGrantDialog(budgetTypeId) {
+    const budget = getBudgetById(budgetTypeId || voucherForm.budgetTypeId || '');
+    setGrantForm({
+      budgetTypeId: budget?.id || '',
+      name: '',
+      code: '',
+      amount: 0,
+      isDefault: false,
+      isActive: true
+    });
+    setGrantOpen(true);
+  }
+
+  function openVoucherBudgetEditor(voucher) {
+    setVoucherBudgetForm({
+      budgetTypeId: voucher?.budgetTypeId || budgets.find((budget) => budget.isAnnual)?.id || budgets[0]?.id || '',
+      budgetGrantId: voucher?.budgetGrantId || '',
+      budgetFlow: voucher?.budgetFlow || 'UTILIZATION'
+    });
+    setVoucherBudgetOpen(true);
   }
 
   async function loadLedgerReport(ledgerId = selectedLedgerId) {
@@ -204,11 +379,17 @@ export default function AccountingPage() {
 
   function openVoucher(voucher) {
     setSelectedVoucher(voucher);
+    setVoucherBudgetForm({
+      budgetTypeId: voucher.budgetTypeId || budgets.find((budget) => budget.isAnnual)?.id || budgets[0]?.id || '',
+      budgetGrantId: voucher.budgetGrantId || '',
+      budgetFlow: voucher.budgetFlow || 'UTILIZATION'
+    });
     setSearchParams({ voucher: voucher.id });
   }
 
   function closeVoucher() {
     setSelectedVoucher(null);
+    setVoucherBudgetOpen(false);
     setSearchParams(voucherTypeFilter ? { voucherType: voucherTypeFilter } : {});
   }
 
@@ -230,6 +411,292 @@ export default function AccountingPage() {
     if (ledger.code === 'SALARY_EXPENSE' || ledger.code.endsWith('_PAYABLE')) return { label: 'Payroll', path: '/payroll' };
     return null;
   }
+
+  const groupRows = useMemo(
+    () =>
+      groups.map((group) => ({
+        ...group,
+        ledgerNames: group.ledgers?.map((ledger) => ledger.name).join(', ') || '-'
+      })),
+    [groups]
+  );
+
+  const ledgerRows = useMemo(
+    () =>
+      ledgers.map((ledger) => {
+        const module = ledgerModule(ledger);
+        return {
+          ...ledger,
+          groupName: ledger.group?.name || '-',
+          openingAmount: Number(ledger.openingBalance || 0),
+          openingText: `${ledger.openingType} ${Number(ledger.openingBalance || 0).toFixed(2)}`,
+          moduleLabel: module?.label || 'Ledger',
+          modulePath: module?.path || ''
+        };
+      }),
+    [ledgers]
+  );
+
+  const voucherTypeRows = useMemo(
+    () =>
+      voucherTypes.map((type) => ({
+        ...type,
+        pattern: `${type.prefix}${String(type.nextNumber).padStart(type.padding, '0')}${type.suffix || ''}`,
+        statusText: type.isActive ? 'Active' : 'Inactive'
+      })),
+    [voucherTypes]
+  );
+
+  const voucherRows = useMemo(
+    () =>
+      vouchers.map((voucher) => ({
+        ...voucher,
+        type: voucher.voucherType,
+        date: voucher.voucherDate,
+        voucherNoText: voucher.voucherNo,
+        budgetName: voucher.budgetType?.name || 'Annual Budget',
+        grantName: voucher.budgetGrant?.name || 'Nil',
+        flowText: voucher.budgetFlow === 'RECEIPT' ? 'Grant Receipt' : 'Grant Utilization',
+        lineText: voucher.lines?.map((line) => `${line.ledger?.name || '-'} ${line.type} ${Number(line.amount).toFixed(2)}`).join(' | ') || '-'
+      })),
+    [vouchers]
+  );
+
+  const filteredVoucherRows = useMemo(
+    () => (voucherTypeFilter ? voucherRows.filter((voucher) => voucher.voucherType === voucherTypeFilter) : voucherRows),
+    [voucherRows, voucherTypeFilter]
+  );
+
+  const trialBalanceRows = useMemo(
+    () => trialBalance.map((row) => ({ ...row, id: row.ledgerId, debitAmount: Number(row.debit || 0), creditAmount: Number(row.credit || 0) })),
+    [trialBalance]
+  );
+
+  const ledgerEntryRows = useMemo(
+    () =>
+      (ledgerReport?.entries || []).map((entry, index) => {
+        const voucher = vouchers.find((item) => item.voucherNo === entry.voucherNo && item.voucherType === entry.voucherType);
+        return {
+          ...entry,
+          id: `${entry.voucherNo}-${index}`,
+          date: entry.date,
+          voucherLabel: `${entry.voucherType} ${entry.voucherNo}`,
+          debitAmount: Number(entry.debit || 0),
+          creditAmount: Number(entry.credit || 0),
+          balanceAmount: Number(entry.balance || 0),
+          voucher
+        };
+      }),
+    [ledgerReport, vouchers]
+  );
+
+  const budgetRows = useMemo(
+    () =>
+      budgets.map((budget) => ({
+        ...budget,
+        typeText: `${budget.category}${budget.isAnnual ? ' (Annual)' : ''}`,
+        total: Number(budget.totalAmount || 0),
+        received: Number(budget.receivedAmount || 0),
+        utilized: Number(budget.utilizedAmount || 0),
+        available: Number(budget.availableAmount || 0),
+        annualText: budget.isAnnual ? 'Yes' : 'No',
+        grantsText: budget.grants?.length
+          ? budget.grants
+              .map(
+                (grant) =>
+                  `${grant.name} - received ${Number(grant.receivedAmount || 0).toFixed(2)} | used ${Number(grant.utilizedAmount || 0).toFixed(2)} / ${Number(grant.amount || 0).toFixed(2)}`
+              )
+              .join('\n')
+          : 'No grants'
+      })),
+    [budgets]
+  );
+
+  const voucherTypeOptions = useMemo(() => voucherTypeRows.map((type) => ({ value: type.code, label: type.name })), [voucherTypeRows]);
+  const budgetOptions = useMemo(() => budgetRows.map((budget) => ({ value: budget.name, label: budget.name })), [budgetRows]);
+  const grantOptions = useMemo(
+    () => Array.from(new Set(voucherRows.map((voucher) => voucher.grantName).filter(Boolean))).map((grant) => ({ value: grant, label: grant })),
+    [voucherRows]
+  );
+
+  const groupColumns = useMemo(
+    () => [
+      { field: 'name', headerName: 'Name', flex: 1, minWidth: 180 },
+      { field: 'code', headerName: 'Code', flex: 0.8, minWidth: 140 },
+      { field: 'nature', headerName: 'Nature', flex: 0.8, minWidth: 140 },
+      { field: 'ledgerNames', headerName: 'Ledger Names', flex: 1.8, minWidth: 260 }
+    ],
+    []
+  );
+
+  const ledgerColumns = useMemo(
+    () => [
+      {
+        field: 'name',
+        headerName: 'Name',
+        flex: 1,
+        minWidth: 190,
+        renderCell: (params) => <Link component="button" underline="always" onClick={() => openLedger(params.row.id)}>{params.value}</Link>
+      },
+      { field: 'ledgerType', headerName: 'Type', flex: 0.8, minWidth: 150 },
+      { field: 'code', headerName: 'Code', flex: 0.8, minWidth: 140 },
+      { field: 'groupName', headerName: 'Group', flex: 1, minWidth: 180 },
+      { field: 'openingText', headerName: 'Opening', flex: 0.8, minWidth: 150 },
+      {
+        field: 'actions',
+        headerName: 'Go To',
+        flex: 0.8,
+        minWidth: 150,
+        sortable: false,
+        filterable: false,
+        exportable: false,
+        renderCell: (params) =>
+          params.row.modulePath ? (
+            <Button size="small" endIcon={<ArrowRightOutlined />} onClick={() => navigate(params.row.modulePath)}>
+              {params.row.moduleLabel}
+            </Button>
+          ) : (
+            <Button size="small" onClick={() => openLedger(params.row.id)}>Ledger</Button>
+          )
+      }
+    ],
+    [navigate]
+  );
+
+  const voucherTypeColumns = useMemo(
+    () => [
+      {
+        field: 'name',
+        headerName: 'Name',
+        flex: 1,
+        minWidth: 190,
+        renderCell: (params) => <Link component="button" underline="always" onClick={() => openVoucherRegister(params.row.code)}>{params.value}</Link>
+      },
+      { field: 'code', headerName: 'Code', flex: 0.8, minWidth: 140 },
+      { field: 'category', headerName: 'Category', flex: 0.8, minWidth: 150 },
+      { field: 'pattern', headerName: 'Pattern', flex: 1, minWidth: 160 },
+      { field: 'nextNumber', headerName: 'Next', type: 'number', flex: 0.5, minWidth: 110 },
+      { field: 'statusText', headerName: 'Status', flex: 0.7, minWidth: 130 }
+    ],
+    []
+  );
+
+  const voucherColumns = useMemo(
+    () => [
+      { field: 'date', headerName: 'Date', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatDate(value) },
+      {
+        field: 'type',
+        headerName: 'Type',
+        flex: 0.65,
+        minWidth: 130,
+        renderCell: (params) => <Link component="button" underline="always" onClick={() => openVoucherRegister(params.row.voucherType)}>{params.value}</Link>
+      },
+      {
+        field: 'voucherNoText',
+        headerName: 'Voucher No',
+        flex: 0.8,
+        minWidth: 150,
+        renderCell: (params) => <Link component="button" underline="always" onClick={() => openVoucher(params.row)}>{params.value}</Link>
+      },
+      { field: 'budgetName', headerName: 'Budget', flex: 0.9, minWidth: 170 },
+      { field: 'grantName', headerName: 'Grant', flex: 0.8, minWidth: 150 },
+      { field: 'flowText', headerName: 'Flow', flex: 0.8, minWidth: 160 },
+      { field: 'narration', headerName: 'Narration', flex: 1.1, minWidth: 220 },
+      { field: 'lineText', headerName: 'Lines', flex: 1.8, minWidth: 320 }
+    ],
+    []
+  );
+
+  const trialBalanceColumns = useMemo(
+    () => [
+      {
+        field: 'ledgerName',
+        headerName: 'Ledger',
+        flex: 1,
+        minWidth: 220,
+        renderCell: (params) => <Link component="button" underline="always" onClick={() => openLedger(params.row.ledgerId)}>{params.value}</Link>
+      },
+      { field: 'groupName', headerName: 'Group', flex: 1, minWidth: 180 },
+      { field: 'debitAmount', headerName: 'Debit', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => Number(value || 0).toFixed(2) },
+      { field: 'creditAmount', headerName: 'Credit', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => Number(value || 0).toFixed(2) }
+    ],
+    []
+  );
+
+  const ledgerEntryColumns = useMemo(
+    () => [
+      { field: 'date', headerName: 'Date', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatDate(value) },
+      {
+        field: 'voucherLabel',
+        headerName: 'Voucher',
+        flex: 0.9,
+        minWidth: 170,
+        renderCell: (params) => (
+          <Link component="button" underline="always" disabled={!params.row.voucher} onClick={() => params.row.voucher && openVoucher(params.row.voucher)}>
+            {params.value}
+          </Link>
+        )
+      },
+      { field: 'narration', headerName: 'Narration', flex: 1.3, minWidth: 240 },
+      { field: 'debitAmount', headerName: 'Debit', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => Number(value || 0).toFixed(2) },
+      { field: 'creditAmount', headerName: 'Credit', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => Number(value || 0).toFixed(2) },
+      { field: 'balanceAmount', headerName: 'Balance', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => Number(value || 0).toFixed(2) }
+    ],
+    []
+  );
+
+  const budgetColumns = useMemo(
+    () => [
+      { field: 'name', headerName: 'Name', flex: 1, minWidth: 190 },
+      { field: 'code', headerName: 'Code', flex: 0.7, minWidth: 130 },
+      { field: 'typeText', headerName: 'Type', flex: 0.8, minWidth: 160 },
+      { field: 'annualText', headerName: 'Annual', flex: 0.55, minWidth: 110 },
+      { field: 'total', headerName: 'Total', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => Number(value || 0).toFixed(2) },
+      { field: 'received', headerName: 'Received', type: 'number', flex: 0.75, minWidth: 140, valueFormatter: (value) => Number(value || 0).toFixed(2) },
+      { field: 'utilized', headerName: 'Utilized', type: 'number', flex: 0.75, minWidth: 140, valueFormatter: (value) => Number(value || 0).toFixed(2) },
+      { field: 'available', headerName: 'Available', type: 'number', flex: 0.75, minWidth: 140, valueFormatter: (value) => Number(value || 0).toFixed(2) },
+      {
+        field: 'grantsText',
+        headerName: 'Grants',
+        flex: 1.4,
+        minWidth: 300,
+        renderCell: (params) => (
+          <Stack spacing={0.5} sx={{ py: 0.5 }}>
+            <Typography variant="caption" sx={{ whiteSpace: 'pre-line' }}>{params.value}</Typography>
+            <Button size="small" onClick={() => openGrantDialog(params.row.id)}>Add Grant</Button>
+          </Stack>
+        )
+      }
+    ],
+    []
+  );
+
+  const selectedVoucherLineRows = useMemo(
+    () =>
+      (selectedVoucher?.lines || []).map((line) => ({
+        ...line,
+        ledgerName: line.ledger?.name || '-',
+        debitAmount: line.type === 'DEBIT' ? Number(line.amount || 0) : null,
+        creditAmount: line.type === 'CREDIT' ? Number(line.amount || 0) : null
+      })),
+    [selectedVoucher]
+  );
+
+  const selectedVoucherLineColumns = useMemo(
+    () => [
+      {
+        field: 'ledgerName',
+        headerName: 'Ledger',
+        flex: 1,
+        minWidth: 220,
+        renderCell: (params) => <Link component="button" underline="always" onClick={() => { closeVoucher(); openLedger(params.row.ledgerId); }}>{params.value}</Link>
+      },
+      { field: 'narration', headerName: 'Narration', flex: 1.2, minWidth: 240, valueGetter: (value) => value || '-' },
+      { field: 'debitAmount', headerName: 'Debit', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => value === null || value === undefined ? '-' : Number(value).toFixed(2) },
+      { field: 'creditAmount', headerName: 'Credit', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => value === null || value === undefined ? '-' : Number(value).toFixed(2) }
+    ],
+    [selectedVoucher]
+  );
 
   return (
     <Grid container spacing={2.75}>
@@ -260,47 +727,89 @@ export default function AccountingPage() {
             <Tab label="Trial Balance" />
             <Tab label="Day Book" />
             <Tab label="Ledger Report" />
+            <Tab label="Budgets" />
           </Tabs>
 
           {tab === 0 && (
             <GridPanel label="Create Group" onCreate={() => setGroupOpen(true)}>
-              <Table size="small"><TableHead><TableRow><TableCell>Name</TableCell><TableCell>Code</TableCell><TableCell>Nature</TableCell><TableCell>Ledger Names</TableCell></TableRow></TableHead><TableBody>{groups.map((group) => <TableRow key={group.id}><TableCell>{group.name}</TableCell><TableCell>{group.code}</TableCell><TableCell>{group.nature}</TableCell><TableCell>{group.ledgers?.map((ledger) => ledger.name).join(', ') || '-'}</TableCell></TableRow>)}</TableBody></Table>
+              <CommonDataGrid
+                title="Account Groups"
+                rows={groupRows}
+                columns={groupColumns}
+                fileName="account-groups"
+                searchPlaceholder="Search groups"
+                selectFilters={[{ field: 'nature', label: 'Nature', options: natures.map((nature) => ({ value: nature, label: nature })) }]}
+              />
             </GridPanel>
           )}
 
           {tab === 1 && (
             <GridPanel label="Create Ledger" onCreate={() => { setLedgerForm({ name: '', code: '', groupId: groups[0]?.id || '', ledgerType: 'GENERAL', openingBalance: 0, openingType: 'DEBIT', bankName: '', bankAccountNo: '', bankIfsc: '', bankBranch: '' }); setLedgerOpen(true); }}>
-              <Table size="small"><TableHead><TableRow><TableCell>Name</TableCell><TableCell>Type</TableCell><TableCell>Code</TableCell><TableCell>Group</TableCell><TableCell>Opening</TableCell><TableCell>Go To</TableCell></TableRow></TableHead><TableBody>{ledgers.map((ledger) => {
-                const module = ledgerModule(ledger);
-                return <TableRow hover key={ledger.id}><TableCell><Link component="button" underline="always" onClick={() => openLedger(ledger.id)}>{ledger.name}</Link></TableCell><TableCell>{ledger.ledgerType}</TableCell><TableCell>{ledger.code}</TableCell><TableCell>{ledger.group.name}</TableCell><TableCell>{ledger.openingType} {Number(ledger.openingBalance).toFixed(2)}</TableCell><TableCell>{module ? <Button size="small" endIcon={<ArrowRightOutlined />} onClick={() => navigate(module.path)}>{module.label}</Button> : <Button size="small" onClick={() => openLedger(ledger.id)}>Ledger</Button>}</TableCell></TableRow>;
-              })}</TableBody></Table>
+              <CommonDataGrid
+                title="Ledgers"
+                rows={ledgerRows}
+                columns={ledgerColumns}
+                fileName="ledgers"
+                searchPlaceholder="Search ledgers"
+                selectFilters={[
+                  { field: 'ledgerType', label: 'Ledger Type', options: ledgerTypes.map((type) => ({ value: type, label: type })) },
+                  { field: 'groupName', label: 'Group', options: groupRows.map((group) => ({ value: group.name, label: group.name })) },
+                  { field: 'openingType', label: 'Opening Type', options: dc.map((type) => ({ value: type, label: type })) }
+                ]}
+              />
             </GridPanel>
           )}
 
           {tab === 2 && (
             <GridPanel label="Create Voucher Type" onCreate={() => { setVoucherTypeForm({ name: '', code: '', category: 'accounting', prefix: '', nextNumber: 1, padding: 5, suffix: '', isActive: true }); setVoucherTypeOpen(true); }}>
-              <Table size="small"><TableHead><TableRow><TableCell>Name</TableCell><TableCell>Code</TableCell><TableCell>Category</TableCell><TableCell>Pattern</TableCell><TableCell>Next</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{voucherTypes.map((type) => <TableRow hover key={type.id} onDoubleClick={() => openVoucherRegister(type.code)}><TableCell><Link component="button" underline="always" onClick={() => openVoucherRegister(type.code)}>{type.name}</Link></TableCell><TableCell>{type.code}</TableCell><TableCell>{type.category}</TableCell><TableCell>{type.prefix}{String(type.nextNumber).padStart(type.padding, '0')}{type.suffix || ''}</TableCell><TableCell>{type.nextNumber}</TableCell><TableCell>{type.isActive ? 'Active' : 'Inactive'}</TableCell></TableRow>)}</TableBody></Table>
+              <CommonDataGrid
+                title="Voucher Types"
+                rows={voucherTypeRows}
+                columns={voucherTypeColumns}
+                fileName="voucher-types"
+                searchPlaceholder="Search voucher types"
+                selectFilters={[
+                  { field: 'category', label: 'Category', options: Array.from(new Set(voucherTypeRows.map((type) => type.category))).map((category) => ({ value: category, label: category })) },
+                  { field: 'statusText', label: 'Status', options: [{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }] }
+                ]}
+              />
             </GridPanel>
           )}
 
           {tab === 3 && (
-            <GridPanel label="Create Voucher" onCreate={() => setVoucherOpen(true)}>
+            <GridPanel label="Create Voucher" onCreate={() => {
+              const annualBudget = budgets.find((budget) => budget.isAnnual) || budgets[0] || null;
+              setVoucherForm((current) => ({
+                ...current,
+                budgetTypeId: annualBudget?.id || '',
+                budgetGrantId: annualBudget?.grants?.find((grant) => grant.isDefault)?.id || annualBudget?.grants?.[0]?.id || '',
+                budgetFlow: 'UTILIZATION'
+              }));
+              setVoucherOpen(true);
+            }}>
               <Stack spacing={1.5}>
                 {voucherTypeFilter && <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}><Chip color="primary" label={`${voucherTypes.find((type) => type.code === voucherTypeFilter)?.name || voucherTypeFilter} Register`} /><Button size="small" onClick={() => clearDrillDown(3)}>Show All Vouchers</Button></Stack>}
-                <VoucherTable vouchers={filteredVouchers} onVoucher={openVoucher} onVoucherType={openVoucherRegister} />
+                <VoucherGrid rows={filteredVoucherRows} columns={voucherColumns} voucherTypeOptions={voucherTypeOptions} budgetOptions={budgetOptions} grantOptions={grantOptions} fileName="vouchers" />
               </Stack>
             </GridPanel>
           )}
 
           {tab === 4 && (
             <Box sx={{ p: 2.5 }}>
-              <Table size="small"><TableHead><TableRow><TableCell>Ledger</TableCell><TableCell>Group</TableCell><TableCell align="right">Debit</TableCell><TableCell align="right">Credit</TableCell></TableRow></TableHead><TableBody>{trialBalance.map((row) => <TableRow hover key={row.ledgerId}><TableCell><Link component="button" underline="always" onClick={() => openLedger(row.ledgerId)}>{row.ledgerName}</Link></TableCell><TableCell>{row.groupName}</TableCell><TableCell align="right">{row.debit.toFixed(2)}</TableCell><TableCell align="right">{row.credit.toFixed(2)}</TableCell></TableRow>)}</TableBody></Table>
+              <CommonDataGrid
+                title="Trial Balance"
+                rows={trialBalanceRows}
+                columns={trialBalanceColumns}
+                fileName="trial-balance"
+                searchPlaceholder="Search trial balance"
+                selectFilters={[{ field: 'groupName', label: 'Group', options: Array.from(new Set(trialBalanceRows.map((row) => row.groupName))).map((group) => ({ value: group, label: group })) }]}
+              />
             </Box>
           )}
 
           {tab === 5 && (
             <Box sx={{ p: 2.5 }}>
-              <VoucherTable vouchers={vouchers} onVoucher={openVoucher} onVoucherType={openVoucherRegister} />
+              <VoucherGrid rows={voucherRows} columns={voucherColumns} voucherTypeOptions={voucherTypeOptions} budgetOptions={budgetOptions} grantOptions={grantOptions} fileName="day-book" />
             </Box>
           )}
 
@@ -313,12 +822,34 @@ export default function AccountingPage() {
                 <Button variant="contained" onClick={() => loadLedgerReport().catch((reportError) => setError(reportError.message))}>View</Button>
               </Stack>
               {ledgerReport && (
-                <Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Voucher</TableCell><TableCell>Narration</TableCell><TableCell align="right">Debit</TableCell><TableCell align="right">Credit</TableCell><TableCell align="right">Balance</TableCell></TableRow></TableHead><TableBody>{ledgerReport.entries.map((entry, index) => {
-                  const voucher = vouchers.find((item) => item.voucherNo === entry.voucherNo && item.voucherType === entry.voucherType);
-                  return <TableRow hover key={`${entry.voucherNo}-${index}`}><TableCell>{formatDate(entry.date)}</TableCell><TableCell><Link component="button" underline="always" disabled={!voucher} onClick={() => voucher && openVoucher(voucher)}>{entry.voucherType} {entry.voucherNo}</Link></TableCell><TableCell>{entry.narration}</TableCell><TableCell align="right">{entry.debit.toFixed(2)}</TableCell><TableCell align="right">{entry.credit.toFixed(2)}</TableCell><TableCell align="right">{entry.balance.toFixed(2)}</TableCell></TableRow>;
-                })}</TableBody></Table>
+                <CommonDataGrid
+                  title={`${ledgerReport.ledger.name} Ledger`}
+                  rows={ledgerEntryRows}
+                  columns={ledgerEntryColumns}
+                  fileName={`${ledgerReport.ledger.code || ledgerReport.ledger.name}-ledger`}
+                  searchPlaceholder="Search ledger entries"
+                  dateField="date"
+                  selectFilters={[{ field: 'voucherType', label: 'Voucher Type', options: voucherTypeOptions }]}
+                />
               )}
             </Stack>
+          )}
+
+          {tab === 7 && (
+            <GridPanel label="Create Budget" onCreate={openBudgetDialog}>
+              <CommonDataGrid
+                title="Budgets"
+                rows={budgetRows}
+                columns={budgetColumns}
+                fileName="budgets"
+                searchPlaceholder="Search budgets"
+                height={520}
+                selectFilters={[
+                  { field: 'category', label: 'Category', options: Array.from(new Set(budgetRows.map((budget) => budget.category))).map((category) => ({ value: category, label: category })) },
+                  { field: 'annualText', label: 'Annual', options: [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }] }
+                ]}
+              />
+            </GridPanel>
           )}
         </Box>
       </Grid>
@@ -342,7 +873,40 @@ export default function AccountingPage() {
       <Dialog open={voucherOpen} onClose={() => setVoucherOpen(false)} fullWidth maxWidth="md">
         <Box component="form" onSubmit={(event) => { event.preventDefault(); save(() => api('/accounting/vouchers', { method: 'POST', body: JSON.stringify({ ...voucherForm, lines: voucherForm.lines.map((line) => ({ ...line, amount: Number(line.amount) })) }) }), 'Voucher posted', () => setVoucherOpen(false)); }}>
           <DialogTitle>Create Voucher</DialogTitle>
-          <DialogContent><Stack spacing={2} sx={{ mt: 1 }}><Grid container spacing={2}><Grid size={{ xs: 12, md: 4 }}><TextField select fullWidth label="Voucher Type" value={voucherForm.voucherTypeId} onChange={(event) => setVoucherForm({ ...voucherForm, voucherTypeId: event.target.value })}>{voucherTypes.map((type) => <MenuItem key={type.id} value={type.id}>{type.name} ({type.prefix}{String(type.nextNumber).padStart(type.padding, '0')}{type.suffix || ''})</MenuItem>)}</TextField></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth label="Voucher No (optional)" value={voucherForm.voucherNo} onChange={(event) => setVoucherForm({ ...voucherForm, voucherNo: event.target.value })} helperText="Leave blank for auto number" /></Grid><Grid size={{ xs: 12, md: 4 }}><DateField fullWidth label="Date" value={voucherForm.voucherDate} onChange={(event) => setVoucherForm({ ...voucherForm, voucherDate: event.target.value })} /></Grid></Grid><TextField label="Narration" value={voucherForm.narration} onChange={(event) => setVoucherForm({ ...voucherForm, narration: event.target.value })} />
+          <DialogContent><Stack spacing={2} sx={{ mt: 1 }}><Grid container spacing={2}><Grid size={{ xs: 12, md: 4 }}><TextField select fullWidth label="Voucher Type" value={voucherForm.voucherTypeId} onChange={(event) => setVoucherForm({ ...voucherForm, voucherTypeId: event.target.value })}>{voucherTypes.map((type) => <MenuItem key={type.id} value={type.id}>{type.name} ({type.prefix}{String(type.nextNumber).padStart(type.padding, '0')}{type.suffix || ''})</MenuItem>)}</TextField></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth label="Voucher No (optional)" value={voucherForm.voucherNo} onChange={(event) => setVoucherForm({ ...voucherForm, voucherNo: event.target.value })} helperText="Leave blank for auto number" /></Grid><Grid size={{ xs: 12, md: 4 }}><DateField fullWidth label="Date" value={voucherForm.voucherDate} onChange={(event) => setVoucherForm({ ...voucherForm, voucherDate: event.target.value })} /></Grid></Grid>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Budget"
+                  value={voucherForm.budgetTypeId}
+                  onChange={(event) => updateVoucherBudgetField('budgetTypeId', event.target.value)}
+                >
+                  <MenuItem value="">Annual Budget</MenuItem>
+                  {budgets.map((budget) => <MenuItem key={budget.id} value={budget.id}>{budget.name} ({budget.code})</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Grant"
+                  value={voucherForm.budgetGrantId}
+                  onChange={(event) => setVoucherForm({ ...voucherForm, budgetGrantId: event.target.value })}
+                  helperText="Optional"
+                >
+                  <MenuItem value="">Nil</MenuItem>
+                  {(getBudgetById(voucherForm.budgetTypeId)?.grants || []).map((grant) => <MenuItem key={grant.id} value={grant.id}>{grant.name} ({grant.code})</MenuItem>)}
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField select fullWidth label="Budget Flow" value={voucherForm.budgetFlow} onChange={(event) => setVoucherForm({ ...voucherForm, budgetFlow: event.target.value })}>
+                  {budgetFlows.map((flow) => <MenuItem key={flow} value={flow}>{flow === 'RECEIPT' ? 'Grant Receipt' : 'Grant Utilization'}</MenuItem>)}
+                </TextField>
+              </Grid>
+            </Grid>
+            <TextField label="Narration" value={voucherForm.narration} onChange={(event) => setVoucherForm({ ...voucherForm, narration: event.target.value })} />
             {voucherForm.lines.map((line, index) => <Grid container spacing={2} key={index}><Grid size={{ xs: 12, md: 5 }}><TextField select fullWidth label="Ledger" value={line.ledgerId} onChange={(event) => updateLine(index, 'ledgerId', event.target.value)}>{ledgers.map((ledger) => <MenuItem key={ledger.id} value={ledger.id}>{ledger.name}</MenuItem>)}</TextField></Grid><Grid size={{ xs: 12, md: 3 }}><TextField select fullWidth label="Type" value={line.type} onChange={(event) => updateLine(index, 'type', event.target.value)}>{dc.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}</TextField></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth type="number" label="Amount" value={line.amount} onChange={(event) => updateLine(index, 'amount', event.target.value)} /></Grid></Grid>)}
             <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}><Button onClick={addLine}>Add Line</Button><Typography>Debit {totals.debit.toFixed(2)} | Credit {totals.credit.toFixed(2)}</Typography></Stack>
           </Stack></DialogContent>
@@ -358,27 +922,173 @@ export default function AccountingPage() {
         </Box>
       </Dialog>
 
+      <Dialog open={budgetOpen} onClose={() => setBudgetOpen(false)} fullWidth maxWidth="sm">
+        <Box
+          component="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const payload = {
+              name: budgetForm.name,
+              code: budgetForm.code,
+              category: budgetForm.category,
+              totalAmount: Number(budgetForm.totalAmount),
+              isAnnual: budgetForm.isAnnual,
+              isActive: budgetForm.isActive,
+              initialGrant: budgetForm.createGrant ? {
+                name: budgetForm.grantName,
+                code: budgetForm.grantCode,
+                amount: Number(budgetForm.grantAmount),
+                isDefault: budgetForm.grantIsDefault,
+                isActive: budgetForm.grantIsActive
+              } : undefined
+            };
+            save(() => api('/accounting/budgets', { method: 'POST', body: JSON.stringify(payload) }), 'Budget created', () => setBudgetOpen(false));
+          }}
+        >
+          <DialogTitle>Create Budget</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField label="Name" value={budgetForm.name} onChange={(event) => setBudgetForm({ ...budgetForm, name: event.target.value })} required />
+              <TextField label="Code" value={budgetForm.code} onChange={(event) => setBudgetForm({ ...budgetForm, code: event.target.value })} required />
+              <TextField label="Category" value={budgetForm.category} onChange={(event) => setBudgetForm({ ...budgetForm, category: event.target.value })} />
+              <TextField type="number" label="Total Amount" value={budgetForm.totalAmount} onChange={(event) => setBudgetForm({ ...budgetForm, totalAmount: event.target.value })} />
+              <TextField select label="Annual Budget" value={budgetForm.isAnnual ? 'yes' : 'no'} onChange={(event) => setBudgetForm({ ...budgetForm, isAnnual: event.target.value === 'yes' })}>
+                <MenuItem value="yes">Yes</MenuItem>
+                <MenuItem value="no">No</MenuItem>
+              </TextField>
+              <TextField select label="Create Grant Also" value={budgetForm.createGrant ? 'yes' : 'no'} onChange={(event) => setBudgetForm({ ...budgetForm, createGrant: event.target.value === 'yes' })}>
+                <MenuItem value="no">No</MenuItem>
+                <MenuItem value="yes">Yes</MenuItem>
+              </TextField>
+              {budgetForm.createGrant && (
+                <>
+                  <TextField label="Grant Name" value={budgetForm.grantName} onChange={(event) => setBudgetForm({ ...budgetForm, grantName: event.target.value })} required />
+                  <TextField label="Grant Code" value={budgetForm.grantCode} onChange={(event) => setBudgetForm({ ...budgetForm, grantCode: event.target.value })} required />
+                  <TextField type="number" label="Grant Amount" value={budgetForm.grantAmount} onChange={(event) => setBudgetForm({ ...budgetForm, grantAmount: event.target.value })} />
+                  <TextField select label="Default Grant" value={budgetForm.grantIsDefault ? 'yes' : 'no'} onChange={(event) => setBudgetForm({ ...budgetForm, grantIsDefault: event.target.value === 'yes' })}>
+                    <MenuItem value="yes">Yes</MenuItem>
+                    <MenuItem value="no">No</MenuItem>
+                  </TextField>
+                </>
+              )}
+            </Stack>
+          </DialogContent>
+          <DialogActions><Button onClick={() => setBudgetOpen(false)}>Cancel</Button><Button type="submit" variant="contained">Save</Button></DialogActions>
+        </Box>
+      </Dialog>
+
+      <Dialog open={grantOpen} onClose={() => setGrantOpen(false)} fullWidth maxWidth="sm">
+        <Box component="form" onSubmit={(event) => { event.preventDefault(); save(() => api(`/accounting/budgets/${grantForm.budgetTypeId}/grants`, { method: 'POST', body: JSON.stringify({ ...grantForm, amount: Number(grantForm.amount) }) }), 'Grant created', () => setGrantOpen(false)); }}>
+          <DialogTitle>Create Grant</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField select label="Budget" value={grantForm.budgetTypeId} onChange={(event) => setGrantForm({ ...grantForm, budgetTypeId: event.target.value })} required>
+                {budgets.map((budget) => <MenuItem key={budget.id} value={budget.id}>{budget.name}</MenuItem>)}
+              </TextField>
+              <TextField label="Name" value={grantForm.name} onChange={(event) => setGrantForm({ ...grantForm, name: event.target.value })} required />
+              <TextField label="Code" value={grantForm.code} onChange={(event) => setGrantForm({ ...grantForm, code: event.target.value })} required />
+              <TextField type="number" label="Amount" value={grantForm.amount} onChange={(event) => setGrantForm({ ...grantForm, amount: event.target.value })} />
+              <TextField select label="Default Grant" value={grantForm.isDefault ? 'yes' : 'no'} onChange={(event) => setGrantForm({ ...grantForm, isDefault: event.target.value === 'yes' })}>
+                <MenuItem value="yes">Yes</MenuItem>
+                <MenuItem value="no">No</MenuItem>
+              </TextField>
+            </Stack>
+          </DialogContent>
+          <DialogActions><Button onClick={() => setGrantOpen(false)}>Cancel</Button><Button type="submit" variant="contained">Save</Button></DialogActions>
+        </Box>
+      </Dialog>
+
+      <Dialog open={voucherBudgetOpen} onClose={() => setVoucherBudgetOpen(false)} fullWidth maxWidth="sm">
+        <Box component="form" onSubmit={(event) => { event.preventDefault(); save(() => api(`/accounting/vouchers/${selectedVoucher.id}/budget`, { method: 'PATCH', body: JSON.stringify({ ...voucherBudgetForm, budgetTypeId: voucherBudgetForm.budgetTypeId || null, budgetGrantId: voucherBudgetForm.budgetGrantId || null }) }), 'Voucher budget updated', () => setVoucherBudgetOpen(false)); }}>
+          <DialogTitle>Edit Voucher Budget</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField select label="Budget" value={voucherBudgetForm.budgetTypeId} onChange={(event) => {
+                const budgetId = event.target.value;
+                const budget = getBudgetById(budgetId);
+                setVoucherBudgetForm({
+                  ...voucherBudgetForm,
+                  budgetTypeId: budget?.id || '',
+                  budgetGrantId: budget?.grants?.find((grant) => grant.isDefault)?.id || budget?.grants?.[0]?.id || ''
+                });
+              }} required>
+                <MenuItem value="">Annual Budget</MenuItem>
+                {budgets.map((budget) => <MenuItem key={budget.id} value={budget.id}>{budget.name}</MenuItem>)}
+              </TextField>
+              <TextField select label="Grant" value={voucherBudgetForm.budgetGrantId} onChange={(event) => setVoucherBudgetForm({ ...voucherBudgetForm, budgetGrantId: event.target.value })}>
+                <MenuItem value="">Nil</MenuItem>
+                {(getBudgetById(voucherBudgetForm.budgetTypeId)?.grants || []).map((grant) => <MenuItem key={grant.id} value={grant.id}>{grant.name}</MenuItem>)}
+              </TextField>
+              <TextField select label="Budget Flow" value={voucherBudgetForm.budgetFlow} onChange={(event) => setVoucherBudgetForm({ ...voucherBudgetForm, budgetFlow: event.target.value })}>
+                {budgetFlows.map((flow) => <MenuItem key={flow} value={flow}>{flow === 'RECEIPT' ? 'Grant Receipt' : 'Grant Utilization'}</MenuItem>)}
+              </TextField>
+            </Stack>
+          </DialogContent>
+          <DialogActions><Button onClick={() => setVoucherBudgetOpen(false)}>Cancel</Button><Button type="submit" variant="contained">Save</Button></DialogActions>
+        </Box>
+      </Dialog>
+
       <Dialog open={Boolean(selectedVoucher)} onClose={closeVoucher} fullWidth maxWidth="md">
         <DialogTitle>{selectedVoucher?.voucherType.toUpperCase()} Voucher: {selectedVoucher?.voucherNo}</DialogTitle>
         <DialogContent>
           {selectedVoucher && <Stack spacing={2} sx={{ mt: 1 }}>
-            <Grid container spacing={2}><Grid size={4}><Typography color="text.secondary">Date</Typography><Typography>{formatDate(selectedVoucher.voucherDate)}</Typography></Grid><Grid size={4}><Typography color="text.secondary">Status</Typography><Chip size="small" color="success" label={selectedVoucher.status} /></Grid><Grid size={4}><Typography color="text.secondary">Branch</Typography><Typography>{selectedVoucher.branch?.name || '-'}</Typography></Grid></Grid>
+            <Grid container spacing={2}>
+              <Grid size={4}><Typography color="text.secondary">Date</Typography><Typography>{formatDate(selectedVoucher.voucherDate)}</Typography></Grid>
+              <Grid size={4}><Typography color="text.secondary">Status</Typography><Chip size="small" color="success" label={selectedVoucher.status} /></Grid>
+              <Grid size={4}><Typography color="text.secondary">Branch</Typography><Typography>{selectedVoucher.branch?.name || '-'}</Typography></Grid>
+            </Grid>
+            <Grid container spacing={2}>
+              <Grid size={6}><Typography color="text.secondary">Budget</Typography><Typography>{selectedVoucher.budgetType?.name || 'Annual Budget'}</Typography></Grid>
+              <Grid size={6}><Typography color="text.secondary">Grant</Typography><Typography>{selectedVoucher.budgetGrant?.name || 'Nil'}</Typography></Grid>
+            </Grid>
+            <Grid container spacing={2}>
+              <Grid size={6}><Typography color="text.secondary">Budget Flow</Typography><Typography>{selectedVoucher.budgetFlow === 'RECEIPT' ? 'Grant Receipt' : 'Grant Utilization'}</Typography></Grid>
+            </Grid>
             <Typography>{selectedVoucher.narration || 'No narration'}</Typography>
-            <Table size="small"><TableHead><TableRow><TableCell>Ledger</TableCell><TableCell>Narration</TableCell><TableCell align="right">Debit</TableCell><TableCell align="right">Credit</TableCell></TableRow></TableHead><TableBody>{selectedVoucher.lines.map((line) => <TableRow key={line.id}><TableCell><Link component="button" underline="always" onClick={() => { closeVoucher(); openLedger(line.ledgerId); }}>{line.ledger.name}</Link></TableCell><TableCell>{line.narration || '-'}</TableCell><TableCell align="right">{line.type === 'DEBIT' ? Number(line.amount).toFixed(2) : '-'}</TableCell><TableCell align="right">{line.type === 'CREDIT' ? Number(line.amount).toFixed(2) : '-'}</TableCell></TableRow>)}</TableBody></Table>
+            <CommonDataGrid
+              title={`${selectedVoucher.voucherNo} Lines`}
+              rows={selectedVoucherLineRows}
+              columns={selectedVoucherLineColumns}
+              fileName={`${selectedVoucher.voucherNo}-lines`}
+              searchPlaceholder="Search voucher lines"
+              height={320}
+              pageSize={25}
+              selectFilters={[{ field: 'type', label: 'Debit/Credit', options: dc.map((type) => ({ value: type, label: type })) }]}
+            />
           </Stack>}
         </DialogContent>
-        <DialogActions><Button onClick={() => { const type = selectedVoucher?.voucherType; closeVoucher(); if (type) openVoucherRegister(type); }}>Open {selectedVoucher?.voucherType} Register</Button><Button variant="contained" onClick={closeVoucher}>Close</Button></DialogActions>
+        <DialogActions>
+          <Button onClick={() => { const type = selectedVoucher?.voucherType; closeVoucher(); if (type) openVoucherRegister(type); }}>Open {selectedVoucher?.voucherType} Register</Button>
+          <Button onClick={() => openVoucherBudgetEditor(selectedVoucher)}>Edit Budget / Grant</Button>
+          <Button variant="contained" onClick={closeVoucher}>Close</Button>
+        </DialogActions>
       </Dialog>
     </Grid>
   );
 }
 
 function GridPanel({ label, onCreate, children }) {
-  return <Stack spacing={2.5} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'flex-end' }}><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>{label}</Button></Stack><TableContainer>{children}</TableContainer></Stack>;
+  return <Stack spacing={2.5} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'flex-end' }}><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>{label}</Button></Stack>{children}</Stack>;
 }
 
-function VoucherTable({ vouchers, onVoucher, onVoucherType }) {
-  return <Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Type</TableCell><TableCell>Voucher No</TableCell><TableCell>Narration</TableCell><TableCell>Lines</TableCell></TableRow></TableHead><TableBody>{vouchers.map((voucher) => <TableRow hover key={voucher.id}><TableCell>{formatDate(voucher.voucherDate)}</TableCell><TableCell><Link component="button" underline="always" onClick={() => onVoucherType(voucher.voucherType)}>{voucher.voucherType}</Link></TableCell><TableCell><Link component="button" underline="always" onClick={() => onVoucher(voucher)}>{voucher.voucherNo}</Link></TableCell><TableCell>{voucher.narration}</TableCell><TableCell>{voucher.lines.map((line) => `${line.ledger.name} ${line.type} ${Number(line.amount).toFixed(2)}`).join(' | ')}</TableCell></TableRow>)}</TableBody></Table>;
+function VoucherGrid({ rows, columns, voucherTypeOptions, budgetOptions, grantOptions, fileName }) {
+  return (
+    <CommonDataGrid
+      title="Vouchers"
+      rows={rows}
+      columns={columns}
+      fileName={fileName}
+      searchPlaceholder="Search vouchers"
+      dateField="date"
+      height={520}
+      selectFilters={[
+        { field: 'type', label: 'Voucher Type', options: voucherTypeOptions },
+        { field: 'budgetName', label: 'Budget', options: budgetOptions },
+        { field: 'grantName', label: 'Grant', options: grantOptions },
+        { field: 'budgetFlow', label: 'Budget Flow', options: budgetFlows.map((flow) => ({ value: flow, label: flow })) }
+      ]}
+    />
+  );
 }
 
 

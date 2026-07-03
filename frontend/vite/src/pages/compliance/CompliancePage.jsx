@@ -15,12 +15,6 @@ import LinearProgress from '@mui/material/LinearProgress';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -35,8 +29,9 @@ import StopOutlined from '@ant-design/icons/StopOutlined';
 
 import { useAuth } from 'contexts/AuthContext';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
-import { formatDate, todayIso } from 'utils/dateFormat';
+import { formatDate, todayIso, toIsoDate } from 'utils/dateFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 const today = () => todayIso();
@@ -46,8 +41,6 @@ const emptyRule = {
   effectiveFrom: today(), effectiveTo: '', description: '', configuration: '{\n  "rate": 18\n}', sourceUrl: '', notes: ''
 };
 const emptyObligation = { name: '', code: 'GSTR3B', periodLabel: 'June 2026', dueDate: '2026-07-20', assignedTo: 'Accounts Team', notes: '' };
-const formatDate = (value) => value ? new Date(value).toLocaleDateString('en-IN') : 'Open ended';
-
 async function api(path, token, options = {}) {
   const response = await fetch(`${API_URL}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -78,26 +71,43 @@ export default function CompliancePage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [companiesLoaded, setCompaniesLoaded] = useState(false);
 
   const filteredRules = useMemo(() => rules.filter((rule) =>
     (!filters.type || rule.type === filters.type) &&
     (!filters.status || rule.status === filters.status) &&
-    (!filters.onDate || (formatDate(rule.effectiveFrom) <= filters.onDate && (!rule.effectiveTo || formatDate(rule.effectiveTo) >= filters.onDate)))
+    (!filters.onDate || (toIsoDate(rule.effectiveFrom) <= filters.onDate && (!rule.effectiveTo || toIsoDate(rule.effectiveTo) >= filters.onDate)))
   ), [rules, filters]);
 
-  async function loadData() {
+  async function ensureCompanies() {
+    if (companiesLoaded && companies.length) return companies;
+    const companyData = await api('/companies', token);
+    setCompanies(companyData);
+    setCompaniesLoaded(true);
+    return companyData;
+  }
+
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
     try {
       setLoading(true);
       setError('');
-      const [dashboardData, ruleData, obligationData, readinessData, companyData] = await Promise.all([
-        api('/compliance/dashboard', token), api('/compliance/rules', token), api('/compliance/obligations', token),
-        api('/compliance/readiness', token), api('/companies', token)
-      ]);
-      setDashboard(dashboardData);
-      setRules(ruleData);
-      setObligations(obligationData);
-      setReadiness(readinessData);
-      setCompanies(companyData);
+      if (tabIndex === 0) {
+        const [dashboardData, readinessData] = await Promise.all([
+          api('/compliance/dashboard', token),
+          api('/compliance/readiness', token)
+        ]);
+        setDashboard(dashboardData);
+        setReadiness(readinessData);
+      }
+      if (tabIndex === 1) {
+        setRules(await api('/compliance/rules', token));
+        await ensureCompanies();
+      }
+      if (tabIndex === 2) setObligations(await api('/compliance/obligations', token));
+      if (tabIndex === 3) setReadiness(await api('/compliance/readiness', token));
+      setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -105,7 +115,7 @@ export default function CompliancePage() {
     }
   }
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadTabData(tab); }, [tab]);
 
   async function run(action, success) {
     try {
@@ -113,7 +123,7 @@ export default function CompliancePage() {
       setMessage('');
       const result = await action();
       setMessage(success);
-      await loadData();
+      await loadTabData(tab, true);
       return result;
     } catch (actionError) {
       setError(actionError.message);
@@ -121,15 +131,16 @@ export default function CompliancePage() {
     }
   }
 
-  function openRule(rule) {
+  async function openRule(rule) {
+    const companyData = await ensureCompanies();
     setRuleForm(rule ? {
       ...rule,
       companyId: rule.companyId || '',
-      effectiveFrom: formatDate(rule.effectiveFrom),
-      effectiveTo: rule.effectiveTo ? formatDate(rule.effectiveTo) : '' || '',
+      effectiveFrom: toIsoDate(rule.effectiveFrom),
+      effectiveTo: toIsoDate(rule.effectiveTo),
       state: rule.state || '', description: rule.description || '', sourceUrl: rule.sourceUrl || '',
       notes: rule.notes || '', configuration: JSON.stringify(rule.configuration, null, 2)
-    } : { ...emptyRule, companyId: companies[0]?.id || '' });
+    } : { ...emptyRule, companyId: companyData[0]?.id || '' });
     setRuleOpen(true);
   }
 
@@ -159,9 +170,10 @@ export default function CompliancePage() {
   }
 
   async function saveObligation() {
+    const companyData = companies.length ? companies : await ensureCompanies();
     const result = await run(() => api('/compliance/obligations', token, {
       method: 'POST',
-      body: JSON.stringify({ ...obligationForm, companyId: companies[0]?.id })
+      body: JSON.stringify({ ...obligationForm, companyId: companyData[0]?.id })
     }), 'Compliance obligation added');
     if (result) setObligationOpen(false);
   }
@@ -179,7 +191,7 @@ export default function CompliancePage() {
       <Grid size={12}>
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { md: 'center' } }}>
           <Box><Typography variant="h3">Compliance Rules</Typography><Typography color="text.secondary">Version statutory rules by jurisdiction and effective date, then monitor filing readiness.</Typography></Box>
-          <Stack direction="row" spacing={1}><Button onClick={loadData} disabled={loading}>{loading ? 'Refreshing...' : 'Refresh'}</Button><Button variant="outlined" startIcon={<CalendarOutlined />} onClick={() => { setObligationForm(emptyObligation); setObligationOpen(true); }}>Add Obligation</Button><Button variant="contained" startIcon={<PlusOutlined />} onClick={() => openRule()}>New Rule Version</Button></Stack>
+          <Stack direction="row" spacing={1}><Button onClick={() => loadTabData(tab, true)} disabled={loading}>{loading ? 'Refreshing...' : 'Refresh'}</Button><Button variant="outlined" startIcon={<CalendarOutlined />} onClick={() => { setObligationForm(emptyObligation); setObligationOpen(true); }}>Add Obligation</Button><Button variant="contained" startIcon={<PlusOutlined />} onClick={() => openRule()}>New Rule Version</Button></Stack>
         </Stack>
       </Grid>
       <Grid size={12}>
@@ -233,11 +245,44 @@ function Overview({ dashboard, readiness, onRules }) {
 }
 
 function RuleRegister({ rules, filters, setFilters, onEdit, onStatus }) {
-  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction={{ xs: 'column', md: 'row' }} spacing={2}><TextField select size="small" label="Rule Type" value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })} sx={{ minWidth: 180 }}><MenuItem value="">All types</MenuItem>{types.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}</TextField><TextField select size="small" label="Status" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} sx={{ minWidth: 160 }}><MenuItem value="">All statuses</MenuItem>{['DRAFT', 'ACTIVE', 'ARCHIVED'].map((status) => <MenuItem key={status} value={status}>{status}</MenuItem>)}</TextField><DateField size="small" label="Effective On" value={filters.onDate} onChange={(e) => setFilters({ ...filters, onDate: e.target.value })} /></Stack><TableContainer><Table><TableHead><TableRow><TableCell>Rule</TableCell><TableCell>Type</TableCell><TableCell>Jurisdiction</TableCell><TableCell>Effective Period</TableCell><TableCell>Scope</TableCell><TableCell>Status</TableCell><TableCell align="right">Actions</TableCell></TableRow></TableHead><TableBody>{rules.map((rule) => <TableRow key={rule.id}><TableCell><Typography fontWeight={600}>{rule.name}</Typography><Typography variant="caption">{rule.code} v{rule.version}</Typography></TableCell><TableCell>{rule.type}</TableCell><TableCell>{rule.country}{rule.state ? ` / ${rule.state}` : ''}</TableCell><TableCell>{formatDate(rule.effectiveFrom)} to {formatDate(rule.effectiveTo)}</TableCell><TableCell>{rule.company?.name || 'All companies'}</TableCell><TableCell><Status status={rule.status} /></TableCell><TableCell align="right">{rule.status !== 'ACTIVE' && <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(rule)}>Edit</Button>}{rule.status === 'DRAFT' && <Button size="small" color="success" onClick={() => onStatus(rule, 'ACTIVE')}>Activate</Button>}{rule.status === 'ACTIVE' && <Button size="small" color="warning" onClick={() => onStatus(rule, 'ARCHIVED')}>Archive</Button>}</TableCell></TableRow>)}</TableBody></Table></TableContainer></Stack>;
+  const rows = rules.map((rule) => ({
+    ...rule,
+    ruleText: `${rule.name} | ${rule.code} v${rule.version}`,
+    jurisdictionText: `${rule.country}${rule.state ? ` / ${rule.state}` : ''}`,
+    effectivePeriod: `${formatDate(rule.effectiveFrom)} to ${formatDate(rule.effectiveTo, 'Open ended')}`,
+    scopeText: rule.company?.name || 'All companies'
+  }));
+  return (
+    <Stack spacing={2} sx={{ p: 2.5 }}>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <TextField select size="small" label="Rule Type" value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value })} sx={{ minWidth: 180 }}><MenuItem value="">All types</MenuItem>{types.map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}</TextField>
+        <TextField select size="small" label="Status" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })} sx={{ minWidth: 160 }}><MenuItem value="">All statuses</MenuItem>{['DRAFT', 'ACTIVE', 'ARCHIVED'].map((status) => <MenuItem key={status} value={status}>{status}</MenuItem>)}</TextField>
+        <DateField size="small" label="Effective On" value={filters.onDate} onChange={(e) => setFilters({ ...filters, onDate: e.target.value })} />
+      </Stack>
+      <CommonDataGrid
+        title="Rule Register"
+        rows={rows}
+        columns={[
+          { field: 'ruleText', headerName: 'Rule', flex: 1.2, minWidth: 220 },
+          { field: 'type', headerName: 'Type', width: 130 },
+          { field: 'jurisdictionText', headerName: 'Jurisdiction', flex: 1, minWidth: 160 },
+          { field: 'effectivePeriod', headerName: 'Effective Period', width: 220 },
+          { field: 'scopeText', headerName: 'Scope', flex: 1, minWidth: 160 },
+          { field: 'status', headerName: 'Status', width: 130, renderCell: ({ value }) => <Status status={value} /> },
+          { field: 'actions', headerName: 'Actions', width: 220, sortable: false, filterable: false, renderCell: ({ row }) => <Stack direction="row" spacing={0.5}>{row.status !== 'ACTIVE' && <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(row)}>Edit</Button>}{row.status === 'DRAFT' && <Button size="small" color="success" onClick={() => onStatus(row, 'ACTIVE')}>Activate</Button>}{row.status === 'ACTIVE' && <Button size="small" color="warning" onClick={() => onStatus(row, 'ARCHIVED')}>Archive</Button>}</Stack> }
+        ]}
+        searchPlaceholder="Search rule, code, jurisdiction, or scope"
+        dateField="effectiveFrom"
+        selectFilters={[{ field: 'type', label: 'Type' }, { field: 'status', label: 'Status' }, { field: 'scopeText', label: 'Scope' }]}
+        fileName="compliance-rules"
+      />
+    </Stack>
+  );
 }
 
 function FilingCalendar({ obligations, onStatus, onAdd }) {
-  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}><Box><Typography variant="h5">Statutory Filing Calendar</Typography><Typography color="text.secondary">Track preparation, filing, and acknowledgement references.</Typography></Box><Button variant="contained" startIcon={<PlusOutlined />} onClick={onAdd}>Add Obligation</Button></Stack><TableContainer><Table><TableHead><TableRow><TableCell>Due Date</TableCell><TableCell>Obligation</TableCell><TableCell>Period</TableCell><TableCell>Owner</TableCell><TableCell>Status</TableCell><TableCell>Reference</TableCell><TableCell align="right">Actions</TableCell></TableRow></TableHead><TableBody>{obligations.map((item) => <TableRow key={item.id}><TableCell>{formatDate(item.dueDate)}</TableCell><TableCell><Typography fontWeight={600}>{item.name}</Typography><Typography variant="caption">{item.code}</Typography></TableCell><TableCell>{item.periodLabel}</TableCell><TableCell>{item.assignedTo || '-'}</TableCell><TableCell><Status status={item.status} /></TableCell><TableCell>{item.referenceNo || '-'}</TableCell><TableCell align="right">{item.status === 'PENDING' && <Button size="small" onClick={() => onStatus(item, 'READY')}>Mark Ready</Button>}{item.status !== 'FILED' && <Button size="small" color="success" onClick={() => onStatus(item, 'FILED')}>File</Button>}</TableCell></TableRow>)}</TableBody></Table></TableContainer></Stack>;
+  const rows = obligations.map((item) => ({ ...item, dueDateText: formatDate(item.dueDate), obligationText: `${item.name} | ${item.code}`, ownerText: item.assignedTo || '-', referenceText: item.referenceNo || '-' }));
+  return <Stack spacing={2} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}><Box><Typography variant="h5">Statutory Filing Calendar</Typography><Typography color="text.secondary">Track preparation, filing, and acknowledgement references.</Typography></Box><Button variant="contained" startIcon={<PlusOutlined />} onClick={onAdd}>Add Obligation</Button></Stack><CommonDataGrid title="Filing Calendar" rows={rows} columns={[{ field: 'dueDateText', headerName: 'Due Date', width: 130 }, { field: 'obligationText', headerName: 'Obligation', flex: 1.2, minWidth: 220 }, { field: 'periodLabel', headerName: 'Period', width: 140 }, { field: 'ownerText', headerName: 'Owner', flex: 1, minWidth: 160 }, { field: 'status', headerName: 'Status', width: 130, renderCell: ({ value }) => <Status status={value} /> }, { field: 'referenceText', headerName: 'Reference', flex: 1, minWidth: 150 }, { field: 'actions', headerName: 'Actions', width: 190, sortable: false, filterable: false, renderCell: ({ row }) => <Stack direction="row" spacing={0.5}>{row.status === 'PENDING' && <Button size="small" onClick={() => onStatus(row, 'READY')}>Mark Ready</Button>}{row.status !== 'FILED' && <Button size="small" color="success" onClick={() => onStatus(row, 'FILED')}>File</Button>}</Stack> }]} searchPlaceholder="Search obligation, code, owner, or reference" dateField="dueDate" selectFilters={[{ field: 'status', label: 'Status' }, { field: 'ownerText', label: 'Owner' }, { field: 'periodLabel', label: 'Period' }]} fileName="filing-calendar" /></Stack>;
 }
 
 function Readiness({ readiness }) {

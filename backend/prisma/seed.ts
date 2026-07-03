@@ -1,4 +1,4 @@
-import { MarketplaceAddon, Prisma, PrismaClient } from '@prisma/client';
+import { BudgetFlow, MarketplaceAddon, Prisma, PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import { createHash } from 'crypto';
 import { permissionCatalog } from '../src/identity/permission-catalog';
@@ -949,6 +949,319 @@ async function main() {
     },
   });
 
+  const directIncome = await prisma.accountGroup.findUniqueOrThrow({ where: { companyId_code: { companyId: company.id, code: 'DIRECT_INCOME' } } });
+  const salesRevenueLedger = await prisma.ledger.upsert({
+    where: { companyId_code: { companyId: company.id, code: 'SALES_REVENUE' } },
+    update: { name: 'Sales Revenue', groupId: directIncome.id, ledgerType: 'INCOME', openingType: 'CREDIT' },
+    create: {
+      companyId: company.id,
+      groupId: directIncome.id,
+      name: 'Sales Revenue',
+      code: 'SALES_REVENUE',
+      ledgerType: 'INCOME',
+      openingType: 'CREDIT',
+    },
+  });
+  const utilitiesExpenseLedger = await prisma.ledger.upsert({
+    where: { companyId_code: { companyId: company.id, code: 'UTILITIES_EXPENSE' } },
+    update: { name: 'Utilities Expense', groupId: indirectExpenses.id, ledgerType: 'EXPENSE', openingType: 'DEBIT' },
+    create: {
+      companyId: company.id,
+      groupId: indirectExpenses.id,
+      name: 'Utilities Expense',
+      code: 'UTILITIES_EXPENSE',
+      ledgerType: 'EXPENSE',
+      openingType: 'DEBIT',
+    },
+  });
+  const marketingExpenseLedger = await prisma.ledger.upsert({
+    where: { companyId_code: { companyId: company.id, code: 'MARKETING_EXPENSE' } },
+    update: { name: 'Marketing Expense', groupId: indirectExpenses.id, ledgerType: 'EXPENSE', openingType: 'DEBIT' },
+    create: {
+      companyId: company.id,
+      groupId: indirectExpenses.id,
+      name: 'Marketing Expense',
+      code: 'MARKETING_EXPENSE',
+      ledgerType: 'EXPENSE',
+      openingType: 'DEBIT',
+    },
+  });
+  const governmentGrantIncomeLedger = await prisma.ledger.upsert({
+    where: { companyId_code: { companyId: company.id, code: 'GOVT_GRANT_INCOME' } },
+    update: { name: 'Government Grant Income', groupId: directIncome.id, ledgerType: 'INCOME', openingType: 'CREDIT' },
+    create: {
+      companyId: company.id,
+      groupId: directIncome.id,
+      name: 'Government Grant Income',
+      code: 'GOVT_GRANT_INCOME',
+      ledgerType: 'INCOME',
+      openingType: 'CREDIT',
+    },
+  });
+
+  const budgetActualVouchers = [
+    {
+      voucherType: 'journal', voucherNo: 'BUD-ACT-SALES-001', voucherDate: new Date('2026-06-14'),
+      narration: 'Seeded budget actual sales revenue', debitLedgerId: customerLedger.id, creditLedgerId: salesRevenueLedger.id, amount: 180000,
+    },
+    {
+      voucherType: 'payment', voucherNo: 'BUD-ACT-UTIL-001', voucherDate: new Date('2026-06-09'),
+      narration: 'Seeded utilities expense for budget utilization', debitLedgerId: utilitiesExpenseLedger.id, creditLedgerId: sbiBank.id, amount: 18000,
+    },
+    {
+      voucherType: 'payment', voucherNo: 'BUD-ACT-MKT-001', voucherDate: new Date('2026-06-15'),
+      narration: 'Seeded marketing campaign expense', debitLedgerId: marketingExpenseLedger.id, creditLedgerId: sbiBank.id, amount: 32500,
+    },
+  ] as const;
+
+  for (const budgetVoucher of budgetActualVouchers) {
+    await prisma.voucher.upsert({
+      where: {
+        companyId_voucherType_voucherNo: {
+          companyId: company.id,
+          voucherType: budgetVoucher.voucherType,
+          voucherNo: budgetVoucher.voucherNo,
+        },
+      },
+      update: {},
+      create: {
+        companyId: company.id,
+        branchId: branch.id,
+        voucherType: budgetVoucher.voucherType,
+        voucherNo: budgetVoucher.voucherNo,
+        voucherDate: budgetVoucher.voucherDate,
+        narration: budgetVoucher.narration,
+        lines: {
+          create: [
+            { ledgerId: budgetVoucher.debitLedgerId, type: 'DEBIT', amount: budgetVoucher.amount, narration: budgetVoucher.narration },
+            { ledgerId: budgetVoucher.creditLedgerId, type: 'CREDIT', amount: budgetVoucher.amount, narration: budgetVoucher.narration },
+          ],
+        },
+      },
+    });
+  }
+
+  const activeBudget = await prisma.budgetPlan.upsert({
+    where: { companyId_code: { companyId: company.id, code: 'BUD-FY26-27' } },
+    update: {
+      name: 'FY 2026-27 Operating Budget',
+      fiscalYear: '2026-27',
+      periodFrom: new Date('2026-04-01'),
+      periodTo: new Date('2027-03-31'),
+      status: 'ACTIVE',
+      totalAmount: 2850000,
+      notes: 'Seeded annual operating budget with live utilization.',
+    },
+    create: {
+      companyId: company.id,
+      name: 'FY 2026-27 Operating Budget',
+      code: 'BUD-FY26-27',
+      fiscalYear: '2026-27',
+      periodFrom: new Date('2026-04-01'),
+      periodTo: new Date('2027-03-31'),
+      status: 'ACTIVE',
+      totalAmount: 2850000,
+      notes: 'Seeded annual operating budget with live utilization.',
+    },
+  });
+  await prisma.budgetLine.deleteMany({ where: { budgetId: activeBudget.id } });
+  await prisma.budgetLine.createMany({
+    data: [
+      { budgetId: activeBudget.id, ledgerId: salesRevenueLedger.id, branchId: branch.id, allocatedAmount: 1500000, notes: 'Annual sales revenue target.' },
+      { budgetId: activeBudget.id, ledgerId: payrollLedgers.get('SALARY_EXPENSE')!, branchId: branch.id, allocatedAmount: 850000, notes: 'Salary and wages allocation.' },
+      { budgetId: activeBudget.id, ledgerId: utilitiesExpenseLedger.id, branchId: branch.id, allocatedAmount: 200000, notes: 'Power, water, and facility utilities.' },
+      { budgetId: activeBudget.id, ledgerId: marketingExpenseLedger.id, branchId: branch.id, allocatedAmount: 300000, notes: 'Campaigns and customer acquisition.' },
+    ],
+  });
+
+  const draftBudget = await prisma.budgetPlan.upsert({
+    where: { companyId_code: { companyId: company.id, code: 'BUD-Q2-REV1' } },
+    update: {
+      name: 'Q2 Revised Budget Draft',
+      fiscalYear: '2026-27',
+      periodFrom: new Date('2026-07-01'),
+      periodTo: new Date('2026-09-30'),
+      status: 'DRAFT',
+      totalAmount: 780000,
+      notes: 'Draft revision for Q2 planning.',
+    },
+    create: {
+      companyId: company.id,
+      name: 'Q2 Revised Budget Draft',
+      code: 'BUD-Q2-REV1',
+      fiscalYear: '2026-27',
+      periodFrom: new Date('2026-07-01'),
+      periodTo: new Date('2026-09-30'),
+      status: 'DRAFT',
+      totalAmount: 780000,
+      notes: 'Draft revision for Q2 planning.',
+    },
+  });
+  await prisma.budgetLine.deleteMany({ where: { budgetId: draftBudget.id } });
+  await prisma.budgetLine.createMany({
+    data: [
+      { budgetId: draftBudget.id, ledgerId: salesRevenueLedger.id, branchId: branch.id, allocatedAmount: 420000, notes: 'Q2 sales target.' },
+      { budgetId: draftBudget.id, ledgerId: utilitiesExpenseLedger.id, branchId: branch.id, allocatedAmount: 90000, notes: 'Q2 utilities plan.' },
+      { budgetId: draftBudget.id, ledgerId: marketingExpenseLedger.id, branchId: branch.id, allocatedAmount: 270000, notes: 'Q2 campaign plan.' },
+    ],
+  });
+
+  const annualBudgetMaster = await prisma.budgetType.upsert({
+    where: { companyId_code: { companyId: company.id, code: 'ANNUAL' } },
+    update: {
+      name: 'Annual Budget Master',
+      category: 'OPERATING',
+      totalAmount: 2850000,
+      isAnnual: true,
+      isActive: true,
+    },
+    create: {
+      companyId: company.id,
+      name: 'Annual Budget Master',
+      code: 'ANNUAL',
+      category: 'OPERATING',
+      totalAmount: 2850000,
+      isAnnual: true,
+      isActive: true,
+    },
+  });
+  const governmentBudgetMaster = await prisma.budgetType.upsert({
+    where: { companyId_code: { companyId: company.id, code: 'GOVT-GRANT' } },
+    update: {
+      name: 'Government Grant Budget',
+      category: 'GOVERNMENT_GRANT',
+      totalAmount: 1500000,
+      isAnnual: false,
+      isActive: true,
+    },
+    create: {
+      companyId: company.id,
+      name: 'Government Grant Budget',
+      code: 'GOVT-GRANT',
+      category: 'GOVERNMENT_GRANT',
+      totalAmount: 1500000,
+      isAnnual: false,
+      isActive: true,
+    },
+  });
+  const smartClassGrant = await prisma.budgetGrant.upsert({
+    where: { companyId_budgetTypeId_code: { companyId: company.id, budgetTypeId: governmentBudgetMaster.id, code: 'SMART-CLASS-26' } },
+    update: {
+      name: 'Smart Classroom Grant 2026',
+      amount: 900000,
+      isDefault: true,
+      isActive: true,
+    },
+    create: {
+      companyId: company.id,
+      budgetTypeId: governmentBudgetMaster.id,
+      name: 'Smart Classroom Grant 2026',
+      code: 'SMART-CLASS-26',
+      amount: 900000,
+      isDefault: true,
+      isActive: true,
+    },
+  });
+  const labGrant = await prisma.budgetGrant.upsert({
+    where: { companyId_budgetTypeId_code: { companyId: company.id, budgetTypeId: governmentBudgetMaster.id, code: 'LAB-UPGRADE-26' } },
+    update: {
+      name: 'Lab Upgrade Grant 2026',
+      amount: 600000,
+      isDefault: false,
+      isActive: true,
+    },
+    create: {
+      companyId: company.id,
+      budgetTypeId: governmentBudgetMaster.id,
+      name: 'Lab Upgrade Grant 2026',
+      code: 'LAB-UPGRADE-26',
+      amount: 600000,
+      isDefault: false,
+      isActive: true,
+    },
+  });
+
+  const grantVouchers = [
+    {
+      voucherType: 'receipt',
+      voucherNo: 'GRT-REC-001',
+      voucherDate: new Date('2026-06-02'),
+      narration: 'Government grant received for smart classroom program',
+      budgetGrantId: smartClassGrant.id,
+      budgetFlow: BudgetFlow.RECEIPT,
+      debitLedgerId: sbiBank.id,
+      creditLedgerId: governmentGrantIncomeLedger.id,
+      amount: 450000,
+    },
+    {
+      voucherType: 'payment',
+      voucherNo: 'GRT-USE-001',
+      voucherDate: new Date('2026-06-11'),
+      narration: 'Grant utilization for classroom equipment purchase',
+      budgetGrantId: smartClassGrant.id,
+      budgetFlow: BudgetFlow.UTILIZATION,
+      debitLedgerId: marketingExpenseLedger.id,
+      creditLedgerId: sbiBank.id,
+      amount: 85000,
+    },
+    {
+      voucherType: 'receipt',
+      voucherNo: 'GRT-REC-002',
+      voucherDate: new Date('2026-06-13'),
+      narration: 'Government grant received for lab upgrade phase 1',
+      budgetGrantId: labGrant.id,
+      budgetFlow: BudgetFlow.RECEIPT,
+      debitLedgerId: sbiBank.id,
+      creditLedgerId: governmentGrantIncomeLedger.id,
+      amount: 300000,
+    },
+    {
+      voucherType: 'payment',
+      voucherNo: 'GRT-USE-002',
+      voucherDate: new Date('2026-06-16'),
+      narration: 'Grant utilization for lab utilities and setup',
+      budgetGrantId: labGrant.id,
+      budgetFlow: BudgetFlow.UTILIZATION,
+      debitLedgerId: utilitiesExpenseLedger.id,
+      creditLedgerId: sbiBank.id,
+      amount: 40000,
+    },
+  ] as const;
+
+  for (const grantVoucher of grantVouchers) {
+    await prisma.voucher.upsert({
+      where: {
+        companyId_voucherType_voucherNo: {
+          companyId: company.id,
+          voucherType: grantVoucher.voucherType,
+          voucherNo: grantVoucher.voucherNo,
+        },
+      },
+      update: {
+        budgetTypeId: governmentBudgetMaster.id,
+        budgetGrantId: grantVoucher.budgetGrantId,
+        budgetFlow: grantVoucher.budgetFlow,
+      },
+      create: {
+        companyId: company.id,
+        branchId: branch.id,
+        budgetTypeId: governmentBudgetMaster.id,
+        budgetGrantId: grantVoucher.budgetGrantId,
+        budgetFlow: grantVoucher.budgetFlow,
+        voucherType: grantVoucher.voucherType,
+        voucherNo: grantVoucher.voucherNo,
+        voucherDate: grantVoucher.voucherDate,
+        narration: grantVoucher.narration,
+        lines: {
+          create: [
+            { ledgerId: grantVoucher.debitLedgerId, type: 'DEBIT', amount: grantVoucher.amount, narration: grantVoucher.narration },
+            { ledgerId: grantVoucher.creditLedgerId, type: 'CREDIT', amount: grantVoucher.amount, narration: grantVoucher.narration },
+          ],
+        },
+      },
+    });
+  }
+
   const seededAudit = await prisma.auditLog.findFirst({
     where: { tenantId: tenant.id, description: 'Seeded company configuration review' },
   });
@@ -1296,7 +1609,7 @@ async function main() {
   }
 
   void paymentRequest;
-  console.log(`Seeded tenant ${tenant.slug}, company, accounting, inventory, GST, manufacturing, payroll, banking, audit, marketplace, compliance, approvals, branch, warehouse, and voucher series`);
+  console.log(`Seeded tenant ${tenant.slug}, company, accounting, inventory, GST, manufacturing, payroll, banking, budget, audit, marketplace, compliance, approvals, branch, warehouse, and voucher series`);
 }
 
 main()

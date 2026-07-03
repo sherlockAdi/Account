@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
@@ -11,17 +11,12 @@ import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 import { formatDate, todayIso } from 'utils/dateFormat';
 
@@ -52,6 +47,8 @@ export default function SalesPage() {
   const [customerOpen, setCustomerOpen] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [referenceLoaded, setReferenceLoaded] = useState(false);
   const [customerForm, setCustomerForm] = useState({ name: '', code: '', gstin: '', phone: '', email: '', state: '' });
   const [invoiceForm, setInvoiceForm] = useState({
     customerId: '',
@@ -72,26 +69,41 @@ export default function SalesPage() {
 
   const warehouses = companies.flatMap((company) => company.branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch, company }))));
 
-  async function loadData() {
-    const [customerData, invoiceData, returnData, itemData, companyData, outstandingData] = await Promise.all([
-      api('/sales/customers'),
-      api('/sales/invoices'),
-      api('/sales/returns'),
-      api('/inventory/items'),
-      api('/companies'),
-      api('/sales/reports/customer-outstanding')
+  async function ensureReferenceData() {
+    if (referenceLoaded && customers.length && items.length && companies.length) return { customerData: customers, itemData: items, companyData: companies };
+    const [customerData, itemData, companyData] = await Promise.all([
+      customers.length ? Promise.resolve(customers) : api('/sales/customers'),
+      items.length ? Promise.resolve(items) : api('/inventory/items'),
+      companies.length ? Promise.resolve(companies) : api('/companies')
     ]);
     setCustomers(customerData);
-    setInvoices(invoiceData);
-    setReturns(returnData);
     setItems(itemData);
     setCompanies(companyData);
-    setOutstanding(outstandingData);
+    setReferenceLoaded(true);
+    return { customerData, itemData, companyData };
   }
 
-  useEffect(() => {
-    loadData().catch((loadError) => setError(loadError.message));
-  }, []);
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
+    try {
+      setError('');
+      if (tabIndex === 0) setCustomers(await api('/sales/customers'));
+      if (tabIndex === 1 || tabIndex === 3) {
+        await ensureReferenceData();
+        setInvoices(await api('/sales/invoices'));
+      }
+      if (tabIndex === 2) {
+        await ensureReferenceData();
+        setReturns(await api('/sales/returns'));
+      }
+      if (tabIndex === 4) setOutstanding(await api('/sales/reports/customer-outstanding'));
+      setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
+    } catch (loadError) {
+      setError(loadError.message);
+    }
+  }
+
+  useEffect(() => { loadTabData(tab); }, [tab]);
 
   async function save(action, success, close) {
     try {
@@ -100,10 +112,24 @@ export default function SalesPage() {
       await action();
       close();
       setMessage(success);
-      await loadData();
+      await loadTabData(tab, true);
     } catch (saveError) {
       setError(saveError.message);
     }
+  }
+
+  async function openInvoiceDialog() {
+    const { customerData, itemData, companyData } = await ensureReferenceData();
+    const freshWarehouses = companyData.flatMap((company) => company.branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch, company }))));
+    setInvoiceForm({ customerId: customerData[0]?.id || '', warehouseId: freshWarehouses[0]?.id || '', invoiceNo: `SI-${Date.now().toString().slice(-5)}`, invoiceDate: todayIso(), narration: '', lines: [{ itemId: itemData[0]?.id || '', quantity: 1, rate: Number(itemData[0]?.standardRate || 0) }] });
+    setInvoiceOpen(true);
+  }
+
+  async function openReturnDialog() {
+    const { customerData, itemData, companyData } = await ensureReferenceData();
+    const freshWarehouses = companyData.flatMap((company) => company.branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch, company }))));
+    setReturnForm({ customerId: customerData[0]?.id || '', warehouseId: freshWarehouses[0]?.id || '', returnNo: `SR-${Date.now().toString().slice(-5)}`, returnDate: todayIso(), narration: '', lines: [{ itemId: itemData[0]?.id || '', quantity: 1, rate: Number(itemData[0]?.standardRate || 0) }] });
+    setReturnOpen(true);
   }
 
   function updateLine(index, key, value) {
@@ -113,6 +139,98 @@ export default function SalesPage() {
   function updateReturnLine(index, key, value) {
     setReturnForm((current) => ({ ...current, lines: current.lines.map((line, i) => (i === index ? { ...line, [key]: value } : line)) }));
   }
+
+  const statusOptions = [{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }];
+  const customerOptions = useMemo(() => customers.map((customer) => ({ value: customer.name, label: customer.name })), [customers]);
+  const warehouseOptions = useMemo(
+    () => Array.from(new Set(warehouses.map((warehouse) => warehouse.name))).map((name) => ({ value: name, label: name })),
+    [warehouses]
+  );
+
+  const customerRows = useMemo(
+    () =>
+      customers.map((customer) => ({
+        ...customer,
+        customer: `${customer.name} ${customer.code}`,
+        ledgerName: customer.ledger?.name || '-',
+        statusText: customer.isActive ? 'Active' : 'Inactive'
+      })),
+    [customers]
+  );
+
+  const invoiceRows = useMemo(
+    () =>
+      invoices.map((invoice) => ({
+        ...invoice,
+        date: invoice.invoiceDate,
+        customerName: invoice.customer?.name || '-',
+        warehouseName: invoice.warehouse?.name || '-',
+        itemText: invoice.lines?.map((line) => `${line.item?.name || '-'} ${Number(line.quantity).toFixed(3)} ${line.item?.unit?.code || ''}`).join(', ') || '-',
+        total: Number(invoice.totalAmount || 0)
+      })),
+    [invoices]
+  );
+
+  const returnRows = useMemo(
+    () =>
+      returns.map((salesReturn) => ({
+        ...salesReturn,
+        date: salesReturn.returnDate,
+        customerName: salesReturn.customer?.name || '-',
+        warehouseName: salesReturn.warehouse?.name || '-',
+        itemText: salesReturn.lines?.map((line) => `${line.item?.name || '-'} ${Number(line.quantity).toFixed(3)} ${line.item?.unit?.code || ''}`).join(', ') || '-',
+        total: Number(salesReturn.totalAmount || 0)
+      })),
+    [returns]
+  );
+
+  const outstandingRows = useMemo(
+    () => outstanding.map((row) => ({ ...row, id: row.customerId, total: Number(row.totalReceivable || 0) })),
+    [outstanding]
+  );
+
+  const customerColumns = useMemo(
+    () => [
+      { field: 'customer', headerName: 'Customer', flex: 1, minWidth: 210 },
+      { field: 'ledgerName', headerName: 'Ledger', flex: 1, minWidth: 190 },
+      { field: 'gstin', headerName: 'GSTIN', flex: 0.8, minWidth: 150, valueGetter: (value) => value || '-' },
+      { field: 'phone', headerName: 'Phone', flex: 0.8, minWidth: 140, valueGetter: (value) => value || '-' },
+      { field: 'statusText', headerName: 'Status', flex: 0.6, minWidth: 120 }
+    ],
+    []
+  );
+
+  const invoiceColumns = useMemo(
+    () => [
+      { field: 'date', headerName: 'Date', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatDate(value) },
+      { field: 'invoiceNo', headerName: 'Invoice', flex: 0.8, minWidth: 150 },
+      { field: 'customerName', headerName: 'Customer', flex: 1, minWidth: 190 },
+      { field: 'warehouseName', headerName: 'Warehouse', flex: 1, minWidth: 180 },
+      { field: 'itemText', headerName: 'Items', flex: 1.7, minWidth: 320 },
+      { field: 'total', headerName: 'Total', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => Number(value || 0).toFixed(2) }
+    ],
+    []
+  );
+
+  const returnColumns = useMemo(
+    () => [
+      { field: 'date', headerName: 'Date', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatDate(value) },
+      { field: 'returnNo', headerName: 'Return', flex: 0.8, minWidth: 150 },
+      { field: 'customerName', headerName: 'Customer', flex: 1, minWidth: 190 },
+      { field: 'warehouseName', headerName: 'Warehouse', flex: 1, minWidth: 180 },
+      { field: 'itemText', headerName: 'Items', flex: 1.7, minWidth: 320 },
+      { field: 'total', headerName: 'Total', type: 'number', flex: 0.7, minWidth: 130, valueFormatter: (value) => Number(value || 0).toFixed(2) }
+    ],
+    []
+  );
+
+  const outstandingColumns = useMemo(
+    () => [
+      { field: 'customerName', headerName: 'Customer', flex: 1, minWidth: 220 },
+      { field: 'total', headerName: 'Total Receivable', type: 'number', flex: 0.8, minWidth: 170, valueFormatter: (value) => Number(value || 0).toFixed(2) }
+    ],
+    []
+  );
 
   return (
     <Grid container spacing={2.75}>
@@ -126,11 +244,11 @@ export default function SalesPage() {
             <Tab label="Sales Register" />
             <Tab label="Customer Outstanding" />
           </Tabs>
-          {tab === 0 && <GridPanel label="Create Customer" onCreate={() => setCustomerOpen(true)}><Table size="small"><TableHead><TableRow><TableCell>Customer</TableCell><TableCell>Ledger</TableCell><TableCell>GSTIN</TableCell><TableCell>Phone</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{customers.map((customer) => <TableRow key={customer.id}><TableCell>{customer.name}<br />{customer.code}</TableCell><TableCell>{customer.ledger.name}</TableCell><TableCell>{customer.gstin || '-'}</TableCell><TableCell>{customer.phone || '-'}</TableCell><TableCell>{customer.isActive ? 'Active' : 'Inactive'}</TableCell></TableRow>)}</TableBody></Table></GridPanel>}
-          {tab === 1 && <GridPanel label="Create Sales Invoice" onCreate={() => { setInvoiceForm({ customerId: customers[0]?.id || '', warehouseId: warehouses[0]?.id || '', invoiceNo: `SI-${Date.now().toString().slice(-5)}`, invoiceDate: todayIso(), narration: '', lines: [{ itemId: items[0]?.id || '', quantity: 1, rate: Number(items[0]?.standardRate || 0) }] }); setInvoiceOpen(true); }}><InvoiceTable invoices={invoices} /></GridPanel>}
-          {tab === 2 && <GridPanel label="Create Sales Return" onCreate={() => { setReturnForm({ customerId: customers[0]?.id || '', warehouseId: warehouses[0]?.id || '', returnNo: `SR-${Date.now().toString().slice(-5)}`, returnDate: todayIso(), narration: '', lines: [{ itemId: items[0]?.id || '', quantity: 1, rate: Number(items[0]?.standardRate || 0) }] }); setReturnOpen(true); }}><ReturnTable returns={returns} /></GridPanel>}
-          {tab === 3 && <Box sx={{ p: 2.5 }}><InvoiceTable invoices={invoices} /></Box>}
-          {tab === 4 && <Box sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Customer</TableCell><TableCell align="right">Total Receivable</TableCell></TableRow></TableHead><TableBody>{outstanding.map((row) => <TableRow key={row.customerId}><TableCell>{row.customerName}</TableCell><TableCell align="right">{row.totalReceivable.toFixed(2)}</TableCell></TableRow>)}</TableBody></Table></Box>}
+          {tab === 0 && <GridPanel label="Create Customer" onCreate={() => setCustomerOpen(true)}><CommonDataGrid title="Customers" rows={customerRows} columns={customerColumns} fileName="sales-customers" searchPlaceholder="Search customers" selectFilters={[{ field: 'statusText', label: 'Status', options: statusOptions }]} /></GridPanel>}
+          {tab === 1 && <GridPanel label="Create Sales Invoice" onCreate={openInvoiceDialog}><CommonDataGrid title="Sales Invoices" rows={invoiceRows} columns={invoiceColumns} fileName="sales-invoices" searchPlaceholder="Search invoices" dateField="date" selectFilters={[{ field: 'customerName', label: 'Customer', options: customerOptions }, { field: 'warehouseName', label: 'Warehouse', options: warehouseOptions }]} /></GridPanel>}
+          {tab === 2 && <GridPanel label="Create Sales Return" onCreate={openReturnDialog}><CommonDataGrid title="Sales Returns" rows={returnRows} columns={returnColumns} fileName="sales-returns" searchPlaceholder="Search returns" dateField="date" selectFilters={[{ field: 'customerName', label: 'Customer', options: customerOptions }, { field: 'warehouseName', label: 'Warehouse', options: warehouseOptions }]} /></GridPanel>}
+          {tab === 3 && <Box sx={{ p: 2.5 }}><CommonDataGrid title="Sales Register" rows={invoiceRows} columns={invoiceColumns} fileName="sales-register" searchPlaceholder="Search register" dateField="date" selectFilters={[{ field: 'customerName', label: 'Customer', options: customerOptions }, { field: 'warehouseName', label: 'Warehouse', options: warehouseOptions }]} /></Box>}
+          {tab === 4 && <Box sx={{ p: 2.5 }}><CommonDataGrid title="Customer Outstanding" rows={outstandingRows} columns={outstandingColumns} fileName="customer-outstanding" searchPlaceholder="Search customers" /></Box>}
         </Box>
       </Grid>
 
@@ -171,15 +289,7 @@ export default function SalesPage() {
 }
 
 function GridPanel({ label, onCreate, children }) {
-  return <Stack spacing={2.5} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'flex-end' }}><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>{label}</Button></Stack><TableContainer>{children}</TableContainer></Stack>;
-}
-
-function InvoiceTable({ invoices }) {
-  return <Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Invoice</TableCell><TableCell>Customer</TableCell><TableCell>Warehouse</TableCell><TableCell>Items</TableCell><TableCell align="right">Total</TableCell></TableRow></TableHead><TableBody>{invoices.map((invoice) => <TableRow key={invoice.id}><TableCell>{formatDate(invoice.invoiceDate)}</TableCell><TableCell>{invoice.invoiceNo}</TableCell><TableCell>{invoice.customer.name}</TableCell><TableCell>{invoice.warehouse.name}</TableCell><TableCell>{invoice.lines.map((line) => `${line.item.name} ${Number(line.quantity).toFixed(3)} ${line.item.unit.code}`).join(', ')}</TableCell><TableCell align="right">{Number(invoice.totalAmount).toFixed(2)}</TableCell></TableRow>)}</TableBody></Table>;
-}
-
-function ReturnTable({ returns }) {
-  return <Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Return</TableCell><TableCell>Customer</TableCell><TableCell>Warehouse</TableCell><TableCell>Items</TableCell><TableCell align="right">Total</TableCell></TableRow></TableHead><TableBody>{returns.map((salesReturn) => <TableRow key={salesReturn.id}><TableCell>{formatDate(salesReturn.returnDate)}</TableCell><TableCell>{salesReturn.returnNo}</TableCell><TableCell>{salesReturn.customer.name}</TableCell><TableCell>{salesReturn.warehouse.name}</TableCell><TableCell>{salesReturn.lines.map((line) => `${line.item.name} ${Number(line.quantity).toFixed(3)} ${line.item.unit.code}`).join(', ')}</TableCell><TableCell align="right">{Number(salesReturn.totalAmount).toFixed(2)}</TableCell></TableRow>)}</TableBody></Table>;
+  return <Stack spacing={2.5} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'flex-end' }}><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>{label}</Button></Stack>{children}</Stack>;
 }
 
 function SimpleDialog({ open, title, onClose, onSubmit, children }) {

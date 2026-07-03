@@ -5,23 +5,15 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
-import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
-import DownloadOutlined from '@ant-design/icons/DownloadOutlined';
 import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
 import { formatDate, todayIso } from 'utils/dateFormat';
 
@@ -52,39 +44,31 @@ export default function ReportsPage() {
   const [dayBook, setDayBook] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [loadedTabs, setLoadedTabs] = useState({});
 
   const query = useMemo(() => `from=${filters.from}&to=${filters.to}`, [filters]);
 
-  async function loadReports() {
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
     try {
       setLoading(true);
       setError('');
-      const [dashboardData, profitLossData, balanceSheetData] = await Promise.all([
-        api(`/reports/dashboard?${query}`),
-        api(`/reports/profit-loss?${query}`),
-        api(`/reports/balance-sheet?${query}`)
-      ]);
-      setDashboard(dashboardData);
-      setProfitLoss(profitLossData);
-      setBalanceSheet(balanceSheetData);
-
-      const [trialData, stockData, customerData, vendorData] = await Promise.all([
-        api(`/accounting/reports/trial-balance?${query}`),
-        api('/inventory/reports/stock-summary'),
-        api('/sales/reports/customer-outstanding'),
-        api('/purchase/reports/vendor-outstanding')
-      ]);
-      setTrialBalance(trialData);
-      setStock(stockData);
-      setCustomers(customerData);
-      setVendors(vendorData);
-
-      const [gstData, dayBookData] = await Promise.all([
-        api(`/gst/reports/gstr-3b?${query}`),
-        api(`/accounting/reports/day-book?${query}`)
-      ]);
-      setGst(gstData);
-      setDayBook(dayBookData);
+      if (tabIndex === 0) setDashboard(await api(`/reports/dashboard?${query}`));
+      if (tabIndex === 1) setProfitLoss(await api(`/reports/profit-loss?${query}`));
+      if (tabIndex === 2) setBalanceSheet(await api(`/reports/balance-sheet?${query}`));
+      if (tabIndex === 3) setTrialBalance(await api(`/accounting/reports/trial-balance?${query}`));
+      if (tabIndex === 4) setStock(await api('/inventory/reports/stock-summary'));
+      if (tabIndex === 5) {
+        const [customerData, vendorData] = await Promise.all([
+          api('/sales/reports/customer-outstanding'),
+          api('/purchase/reports/vendor-outstanding')
+        ]);
+        setCustomers(customerData);
+        setVendors(vendorData);
+      }
+      if (tabIndex === 6) setGst(await api(`/gst/reports/gstr-3b?${query}`));
+      if (tabIndex === 7) setDayBook(await api(`/accounting/reports/day-book?${query}`));
+      setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -92,62 +76,11 @@ export default function ReportsPage() {
     }
   }
 
-  useEffect(() => { loadReports(); }, []);
+  useEffect(() => { loadTabData(tab); }, [tab]);
 
-  const exportSets = [
-    {
-      name: 'mis-overview',
-      rows: Object.entries(dashboard).filter(([, value]) => typeof value === 'number').map(([metric, value]) => ({ metric, value }))
-    },
-    {
-      name: 'profit-loss',
-      rows: [
-        ...profitLoss.income.map((row) => ({ section: 'Income', ledger: row.ledgerName, group: row.groupName, amount: row.amount })),
-        ...profitLoss.expenses.map((row) => ({ section: 'Expense', ledger: row.ledgerName, group: row.groupName, amount: row.amount }))
-      ]
-    },
-    {
-      name: 'balance-sheet',
-      rows: [
-        ...balanceSheet.assets.map((row) => ({ section: 'Assets', ledger: row.ledgerName, group: row.groupName, amount: row.amount })),
-        ...balanceSheet.liabilities.map((row) => ({ section: 'Liabilities', ledger: row.ledgerName, group: row.groupName, amount: row.amount })),
-        ...balanceSheet.equity.map((row) => ({ section: 'Equity', ledger: row.ledgerName, group: row.groupName, amount: row.amount }))
-      ]
-    },
-    { name: 'trial-balance', rows: trialBalance },
-    { name: 'stock-summary', rows: stock },
-    {
-      name: 'outstanding',
-      rows: [
-        ...customers.map((row) => ({ type: 'Receivable', party: row.customerName, amount: row.totalReceivable })),
-        ...vendors.map((row) => ({ type: 'Payable', party: row.vendorName, amount: row.totalPayable }))
-      ]
-    },
-    { name: 'gst-summary', rows: [gst] },
-    {
-      name: 'day-book',
-      rows: dayBook.map((voucher) => ({
-        date: formatDate(voucher.voucherDate),
-        voucherNo: voucher.voucherNo,
-        voucherType: voucher.voucherType,
-        narration: voucher.narration,
-        debit: voucher.lines.filter((line) => line.type === 'DEBIT').reduce((sum, line) => sum + Number(line.amount), 0),
-        credit: voucher.lines.filter((line) => line.type === 'CREDIT').reduce((sum, line) => sum + Number(line.amount), 0)
-      }))
-    }
-  ];
-
-  function exportCsv() {
-    const report = exportSets[tab];
-    if (!report.rows.length) return;
-    const headers = [...new Set(report.rows.flatMap((row) => Object.keys(row)))];
-    const escape = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
-    const csv = [headers.map(escape).join(','), ...report.rows.map((row) => headers.map((header) => escape(row[header])).join(','))].join('\r\n');
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    link.download = `${report.name}-${filters.from}-to-${filters.to}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
+  function applyCurrentReport() {
+    setLoadedTabs((current) => ({ ...current, [tab]: false }));
+    loadTabData(tab, true);
   }
 
   return (
@@ -159,8 +92,7 @@ export default function ReportsPage() {
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
             <DateField size="small" label="From" value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} />
             <DateField size="small" label="To" value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} />
-            <Button variant="contained" startIcon={<ReloadOutlined />} onClick={loadReports} disabled={loading}>{loading ? 'Loading...' : 'Apply'}</Button>
-            <Button variant="outlined" startIcon={<DownloadOutlined />} onClick={exportCsv}>Export CSV</Button>
+            <Button variant="contained" startIcon={<ReloadOutlined />} onClick={applyCurrentReport} disabled={loading}>{loading ? 'Loading...' : 'Apply'}</Button>
           </Stack>
         </Stack>
       </Grid>
@@ -211,17 +143,39 @@ function BalanceSheet({ report }) {
 }
 
 function StatementTable({ title, rows = [], total }) {
-  return <Card variant="outlined"><CardContent><Typography variant="h5" sx={{ mb: 1 }}>{title}</Typography><Table size="small"><TableHead><TableRow><TableCell>Ledger</TableCell><TableCell>Group</TableCell><TableCell align="right">Amount</TableCell></TableRow></TableHead><TableBody>{rows.map((row) => <TableRow key={row.ledgerId}><TableCell>{row.ledgerName}</TableCell><TableCell>{row.groupName}</TableCell><TableCell align="right">{money(row.amount)}</TableCell></TableRow>)}<TableRow><TableCell colSpan={2}><strong>Total {title}</strong></TableCell><TableCell align="right"><strong>{money(total)}</strong></TableCell></TableRow></TableBody></Table></CardContent></Card>;
+  const gridRows = [...rows.map((row) => ({ ...row, amountValue: Number(row.amount || 0) })), { ledgerId: `${title}-total`, ledgerName: `Total ${title}`, groupName: '', amountValue: Number(total || 0) }];
+  const columns = [
+    { field: 'ledgerName', headerName: 'Ledger', flex: 1, minWidth: 220 },
+    { field: 'groupName', headerName: 'Group', flex: 1, minWidth: 180 },
+    { field: 'amountValue', headerName: 'Amount', type: 'number', flex: 0.8, minWidth: 150, valueFormatter: (value) => money(value) }
+  ];
+  return <Card variant="outlined"><CardContent><Typography variant="h5" sx={{ mb: 1 }}>{title}</Typography><CommonDataGrid title={title} rows={gridRows} columns={columns} fileName={title.toLowerCase().replaceAll(' ', '-')} searchPlaceholder={`Search ${title}`} height={380} selectFilters={[{ field: 'groupName', label: 'Group', options: Array.from(new Set(rows.map((row) => row.groupName).filter(Boolean))).map((group) => ({ value: group, label: group })) }]} /></CardContent></Card>;
 }
 
 function TrialBalance({ rows }) {
   const debit = rows.reduce((sum, row) => sum + Number(row.debit), 0);
   const credit = rows.reduce((sum, row) => sum + Number(row.credit), 0);
-  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Ledger</TableCell><TableCell>Group</TableCell><TableCell align="right">Debit</TableCell><TableCell align="right">Credit</TableCell></TableRow></TableHead><TableBody>{rows.filter((row) => row.debit || row.credit).map((row) => <TableRow key={row.ledgerId}><TableCell>{row.ledgerName}</TableCell><TableCell>{row.groupName}</TableCell><TableCell align="right">{row.debit ? money(row.debit) : '-'}</TableCell><TableCell align="right">{row.credit ? money(row.credit) : '-'}</TableCell></TableRow>)}<TableRow><TableCell colSpan={2}><strong>Total</strong></TableCell><TableCell align="right"><strong>{money(debit)}</strong></TableCell><TableCell align="right"><strong>{money(credit)}</strong></TableCell></TableRow></TableBody></Table></TableContainer>;
+  const gridRows = [...rows.filter((row) => row.debit || row.credit).map((row) => ({ ...row, debitValue: Number(row.debit || 0), creditValue: Number(row.credit || 0) })), { ledgerId: 'total', ledgerName: 'Total', groupName: '', debitValue: debit, creditValue: credit }];
+  const columns = [
+    { field: 'ledgerName', headerName: 'Ledger', flex: 1, minWidth: 220 },
+    { field: 'groupName', headerName: 'Group', flex: 1, minWidth: 180 },
+    { field: 'debitValue', headerName: 'Debit', type: 'number', flex: 0.8, minWidth: 150, valueFormatter: (value) => (value ? money(value) : '-') },
+    { field: 'creditValue', headerName: 'Credit', type: 'number', flex: 0.8, minWidth: 150, valueFormatter: (value) => (value ? money(value) : '-') }
+  ];
+  return <Box sx={{ p: 2.5 }}><CommonDataGrid title="Trial Balance" rows={gridRows} columns={columns} fileName="trial-balance" searchPlaceholder="Search ledgers" selectFilters={[{ field: 'groupName', label: 'Group', options: Array.from(new Set(rows.map((row) => row.groupName).filter(Boolean))).map((group) => ({ value: group, label: group })) }]} /></Box>;
 }
 
 function StockSummary({ rows }) {
-  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Item</TableCell><TableCell>Group</TableCell><TableCell>Unit</TableCell><TableCell align="right">Quantity</TableCell><TableCell align="right">Value</TableCell><TableCell>Status</TableCell></TableRow></TableHead><TableBody>{rows.map((row) => <TableRow key={row.itemId}><TableCell>{row.itemName}<br /><Typography variant="caption">{row.itemCode}</Typography></TableCell><TableCell>{row.groupName}</TableCell><TableCell>{row.unit}</TableCell><TableCell align="right">{Number(row.quantity).toFixed(3)}</TableCell><TableCell align="right">{money(row.value)}</TableCell><TableCell><Chip size="small" color={row.belowReorder ? 'warning' : 'success'} label={row.belowReorder ? 'Below reorder' : 'Available'} /></TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  const gridRows = rows.map((row) => ({ ...row, id: row.itemId, itemText: `${row.itemName} ${row.itemCode}`, quantityValue: Number(row.quantity || 0), valueAmount: Number(row.value || 0), statusText: row.belowReorder ? 'Below reorder' : 'Available' }));
+  const columns = [
+    { field: 'itemText', headerName: 'Item', flex: 1, minWidth: 220 },
+    { field: 'groupName', headerName: 'Group', flex: 0.9, minWidth: 180 },
+    { field: 'unit', headerName: 'Unit', flex: 0.5, minWidth: 100 },
+    { field: 'quantityValue', headerName: 'Quantity', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => Number(value || 0).toFixed(3) },
+    { field: 'valueAmount', headerName: 'Value', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => money(value) },
+    { field: 'statusText', headerName: 'Status', flex: 0.8, minWidth: 150 }
+  ];
+  return <Box sx={{ p: 2.5 }}><CommonDataGrid title="Stock Summary" rows={gridRows} columns={columns} fileName="stock-summary" searchPlaceholder="Search stock" selectFilters={[{ field: 'groupName', label: 'Group', options: Array.from(new Set(gridRows.map((row) => row.groupName).filter(Boolean))).map((group) => ({ value: group, label: group })) }, { field: 'statusText', label: 'Status', options: [{ value: 'Available', label: 'Available' }, { value: 'Below reorder', label: 'Below reorder' }] }]} /></Box>;
 }
 
 function Outstanding({ customers, vendors }) {
@@ -229,7 +183,12 @@ function Outstanding({ customers, vendors }) {
 }
 
 function PartyTable({ title, rows }) {
-  return <Card variant="outlined"><CardContent><Typography variant="h5" sx={{ mb: 1 }}>{title}</Typography><Table size="small"><TableHead><TableRow><TableCell>Party</TableCell><TableCell align="right">Outstanding</TableCell></TableRow></TableHead><TableBody>{rows.map((row) => <TableRow key={row.id}><TableCell>{row.name}</TableCell><TableCell align="right">{money(row.amount)}</TableCell></TableRow>)}<TableRow><TableCell><strong>Total</strong></TableCell><TableCell align="right"><strong>{money(rows.reduce((sum, row) => sum + Number(row.amount), 0))}</strong></TableCell></TableRow></TableBody></Table></CardContent></Card>;
+  const gridRows = [...rows.map((row) => ({ ...row, amountValue: Number(row.amount || 0) })), { id: `${title}-total`, name: 'Total', amountValue: rows.reduce((sum, row) => sum + Number(row.amount), 0) }];
+  const columns = [
+    { field: 'name', headerName: 'Party', flex: 1, minWidth: 220 },
+    { field: 'amountValue', headerName: 'Outstanding', type: 'number', flex: 0.8, minWidth: 160, valueFormatter: (value) => money(value) }
+  ];
+  return <Card variant="outlined"><CardContent><Typography variant="h5" sx={{ mb: 1 }}>{title}</Typography><CommonDataGrid title={title} rows={gridRows} columns={columns} fileName={title.toLowerCase().replaceAll(' ', '-')} searchPlaceholder={`Search ${title}`} height={360} /></CardContent></Card>;
 }
 
 function GstSummary({ gst }) {
@@ -237,7 +196,15 @@ function GstSummary({ gst }) {
 }
 
 function DayBook({ vouchers }) {
-  return <TableContainer sx={{ p: 2.5 }}><Table size="small"><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Voucher</TableCell><TableCell>Narration</TableCell><TableCell>Ledger Lines</TableCell><TableCell align="right">Amount</TableCell></TableRow></TableHead><TableBody>{vouchers.map((voucher) => <TableRow key={voucher.id}><TableCell>{formatDate(voucher.voucherDate)}</TableCell><TableCell>{voucher.voucherNo}<br /><Typography variant="caption">{voucher.voucherType}</Typography></TableCell><TableCell>{voucher.narration || '-'}</TableCell><TableCell>{voucher.lines.map((line) => `${line.ledger.name} (${line.type})`).join(', ')}</TableCell><TableCell align="right">{money(voucher.lines.filter((line) => line.type === 'DEBIT').reduce((sum, line) => sum + Number(line.amount), 0))}</TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  const rows = vouchers.map((voucher) => ({ ...voucher, date: voucher.voucherDate, voucherText: `${voucher.voucherNo} ${voucher.voucherType}`, lineText: voucher.lines.map((line) => `${line.ledger.name} (${line.type})`).join(', '), amount: voucher.lines.filter((line) => line.type === 'DEBIT').reduce((sum, line) => sum + Number(line.amount), 0) }));
+  const columns = [
+    { field: 'date', headerName: 'Date', flex: 0.7, minWidth: 130, valueFormatter: (value) => formatDate(value) },
+    { field: 'voucherText', headerName: 'Voucher', flex: 0.8, minWidth: 170 },
+    { field: 'narration', headerName: 'Narration', flex: 1, minWidth: 220, valueGetter: (value) => value || '-' },
+    { field: 'lineText', headerName: 'Ledger Lines', flex: 1.6, minWidth: 320 },
+    { field: 'amount', headerName: 'Amount', type: 'number', flex: 0.8, minWidth: 150, valueFormatter: (value) => money(value) }
+  ];
+  return <Box sx={{ p: 2.5 }}><CommonDataGrid title="Day Book" rows={rows} columns={columns} fileName="day-book" searchPlaceholder="Search day book" dateField="date" selectFilters={[{ field: 'voucherType', label: 'Voucher Type', options: Array.from(new Set(rows.map((row) => row.voucherType))).map((type) => ({ value: type, label: type })) }]} /></Box>;
 }
 
 

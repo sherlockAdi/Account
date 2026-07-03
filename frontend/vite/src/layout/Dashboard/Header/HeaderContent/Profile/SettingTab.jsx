@@ -4,6 +4,7 @@ import Link from '@mui/material/Link';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
+import { Link as RouterLink } from 'react-router-dom';
 
 // assets
 import CommentOutlined from '@ant-design/icons/CommentOutlined';
@@ -25,11 +26,11 @@ export default function SettingTab() {
           <ListItemText primary="Support" />
         </ListItemButton>
       </Link>
-      <ListItemButton>
+      <ListItemButton component={RouterLink} to="/system-setting">
         <ListItemIcon>
           <UserOutlined />
         </ListItemIcon>
-        <ListItemText primary="Account Settings" />
+        <ListItemText primary="System Setting" />
       </ListItemButton>
       <ListItemButton>
         <ListItemIcon>

@@ -39,6 +39,11 @@ enum VoucherStatus {
   CANCELLED
 }
 
+enum BudgetFlow {
+  RECEIPT
+  UTILIZATION
+}
+
 enum LedgerType {
   GENERAL
   CASH
@@ -198,6 +203,13 @@ enum ApprovalDecisionType {
   REJECTED
 }
 
+enum BudgetStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
 model Tenant {
   id                  String               @id @default(uuid())
   name                String
@@ -212,6 +224,7 @@ model Tenant {
   complianceRules     ComplianceRule[]
   approvalPolicies    ApprovalPolicy[]
   approvalRequests    ApprovalRequest[]
+  systemSettings      SystemSetting[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   deletedAt           DateTime?
@@ -244,6 +257,8 @@ model Company {
   ledgers               Ledger[]
   vouchers              Voucher[]
   voucherTypes          VoucherType[]
+  budgetTypes           BudgetType[]
+  budgetGrants          BudgetGrant[]
   voucherSeries         VoucherSeries[]
   units                 Unit[]
   itemGroups            ItemGroup[]
@@ -270,6 +285,7 @@ model Company {
   complianceObligations ComplianceObligation[]
   approvalPolicies      ApprovalPolicy[]
   approvalRequests      ApprovalRequest[]
+  budgets               BudgetPlan[]
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   deletedAt             DateTime?
@@ -277,6 +293,48 @@ model Company {
   @@unique([tenantId, code])
   @@index([tenantId, isActive])
   @@map("companies")
+}
+
+model BudgetType {
+  id           String         @id @default(uuid())
+  companyId    String
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name         String
+  code         String
+  category     String         @default("ANNUAL")
+  totalAmount  Decimal        @default(0) @db.Decimal(18, 2)
+  isAnnual     Boolean        @default(false)
+  isActive     Boolean        @default(true)
+  grants       BudgetGrant[]
+  vouchers     Voucher[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+
+  @@unique([companyId, code])
+  @@index([companyId, isAnnual])
+  @@map("budget_types")
+}
+
+model BudgetGrant {
+  id           String         @id @default(uuid())
+  companyId    String
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  budgetTypeId String
+  budgetType   BudgetType     @relation(fields: [budgetTypeId], references: [id], onDelete: Cascade)
+  name         String
+  code         String
+  amount       Decimal        @default(0) @db.Decimal(18, 2)
+  isDefault    Boolean        @default(false)
+  isActive     Boolean        @default(true)
+  vouchers     Voucher[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+
+  @@unique([companyId, budgetTypeId, code])
+  @@index([companyId, budgetTypeId, isDefault])
+  @@map("budget_grants")
 }
 
 model TaxRate {
@@ -341,6 +399,7 @@ model Branch {
   vouchers     Voucher[]
   employees    Employee[]
   payrollRuns  PayrollRun[]
+  budgetLines  BudgetLine[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   deletedAt    DateTime?
@@ -399,6 +458,7 @@ model Ledger {
   partyCheques        Cheque[]             @relation("ChequePartyLedger")
   adviceBankLedgers   PaymentAdvice[]      @relation("AdviceBankLedger")
   adviceBeneficiaries PaymentAdvice[]      @relation("AdviceBeneficiaryLedger")
+  budgetLines         BudgetLine[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   deletedAt           DateTime?
@@ -414,6 +474,11 @@ model Voucher {
   company       Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   branchId      String?
   branch        Branch?              @relation(fields: [branchId], references: [id])
+  budgetTypeId  String?
+  budgetType    BudgetType?          @relation(fields: [budgetTypeId], references: [id], onDelete: SetNull)
+  budgetGrantId String?
+  budgetGrant   BudgetGrant?         @relation(fields: [budgetGrantId], references: [id], onDelete: SetNull)
+  budgetFlow    BudgetFlow           @default(UTILIZATION)
   voucherType   String
   voucherNo     String
   voucherDate   DateTime
@@ -430,6 +495,8 @@ model Voucher {
 
   @@unique([companyId, voucherType, voucherNo])
   @@index([companyId, voucherDate])
+  @@index([companyId, budgetTypeId])
+  @@index([companyId, budgetGrantId])
   @@map("vouchers")
 }
 
@@ -448,6 +515,47 @@ model VoucherLine {
   @@index([ledgerId])
   @@index([voucherId])
   @@map("voucher_lines")
+}
+
+model BudgetPlan {
+  id          String       @id @default(uuid())
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  code        String
+  fiscalYear  String
+  periodFrom  DateTime
+  periodTo    DateTime
+  status      BudgetStatus @default(DRAFT)
+  totalAmount Decimal      @default(0) @db.Decimal(18, 2)
+  notes       String?
+  lines       BudgetLine[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+
+  @@unique([companyId, code])
+  @@index([companyId, status, periodFrom, periodTo])
+  @@map("budget_plans")
+}
+
+model BudgetLine {
+  id              String     @id @default(uuid())
+  budgetId        String
+  budget          BudgetPlan @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  ledgerId        String
+  ledger          Ledger     @relation(fields: [ledgerId], references: [id])
+  branchId        String?
+  branch          Branch?    @relation(fields: [branchId], references: [id])
+  allocatedAmount Decimal    @db.Decimal(18, 2)
+  notes           String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@unique([budgetId, ledgerId, branchId])
+  @@index([ledgerId])
+  @@index([branchId])
+  @@map("budget_lines")
 }
 
 model BankReconciliation {
@@ -1453,6 +1561,19 @@ model ApprovalDecision {
   @@unique([requestId, stepId, approverId])
   @@index([approverId, createdAt])
   @@map("approval_decisions")
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key       String
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, key])
+  @@map("system_settings")
 }
 
 model Role {

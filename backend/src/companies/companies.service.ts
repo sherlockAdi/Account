@@ -17,8 +17,15 @@ export class CompaniesService {
     private readonly identityService: IdentityService,
   ) {}
 
-  async listCompanies() {
+  async listCompanies(summary = false) {
     const tenant = await this.identityService.ensureDefaults();
+    if (summary) {
+      return this.prisma.company.findMany({
+        where: { tenantId: tenant.id, deletedAt: null },
+        include: { _count: { select: { branches: true, voucherSeries: true } } },
+        orderBy: { name: 'asc' },
+      });
+    }
     return this.prisma.company.findMany({
       where: { tenantId: tenant.id, deletedAt: null },
       include: {

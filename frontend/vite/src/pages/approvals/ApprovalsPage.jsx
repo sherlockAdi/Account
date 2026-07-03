@@ -15,12 +15,6 @@ import Grid from '@mui/material/Grid';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -32,6 +26,7 @@ import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import SafetyCertificateOutlined from '@ant-design/icons/SafetyCertificateOutlined';
 import StopOutlined from '@ant-design/icons/StopOutlined';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import { useAuth } from 'contexts/AuthContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
@@ -78,24 +73,39 @@ export default function ApprovalsPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadedTabs, setLoadedTabs] = useState({});
+  const [referenceLoaded, setReferenceLoaded] = useState(false);
 
   const filteredRequests = useMemo(() => requests.filter((item) => !statusFilter || item.status === statusFilter), [requests, statusFilter]);
   const selectedPolicy = policies.find((item) => item.id === requestForm.policyId);
 
-  async function loadData() {
+  async function ensureReferenceData() {
+    if (referenceLoaded && policies.length && roles.length && companies.length) return { policyData: policies, roleData: roles, companyData: companies };
+    const [policyData, roleData, companyData] = await Promise.all([
+      policies.length ? Promise.resolve(policies) : api('/approvals/policies', token),
+      roles.length ? Promise.resolve(roles) : api('/identity/roles', token),
+      companies.length ? Promise.resolve(companies) : api('/companies', token)
+    ]);
+    setPolicies(policyData);
+    setRoles(roleData);
+    setCompanies(companyData);
+    setReferenceLoaded(true);
+    return { policyData, roleData, companyData };
+  }
+
+  async function loadTabData(tabIndex = tab, force = false) {
+    if (!force && loadedTabs[tabIndex]) return;
     try {
       setLoading(true);
       setError('');
-      const [dashboardData, requestData, policyData, historyData, roleData, companyData] = await Promise.all([
-        api('/approvals/dashboard', token), api('/approvals/requests', token), api('/approvals/policies', token),
-        api('/approvals/history', token), api('/identity/roles', token), api('/companies', token)
-      ]);
-      setDashboard(dashboardData);
-      setRequests(requestData);
-      setPolicies(policyData);
-      setHistory(historyData);
-      setRoles(roleData);
-      setCompanies(companyData);
+      if (tabIndex === 0) setDashboard(await api('/approvals/dashboard', token));
+      if (tabIndex === 1 || tabIndex === 2) setRequests(await api('/approvals/requests', token));
+      if (tabIndex === 3) {
+        setPolicies(await api('/approvals/policies', token));
+        await ensureReferenceData();
+      }
+      if (tabIndex === 4) setHistory(await api('/approvals/history', token));
+      setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -103,7 +113,7 @@ export default function ApprovalsPage() {
     }
   }
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadTabData(tab); }, [tab]);
 
   async function run(action, success) {
     try {
@@ -111,7 +121,7 @@ export default function ApprovalsPage() {
       setMessage('');
       const result = await action();
       setMessage(success);
-      await loadData();
+      await loadTabData(tab, true);
       return result;
     } catch (actionError) {
       setError(actionError.message);
@@ -119,9 +129,10 @@ export default function ApprovalsPage() {
     }
   }
 
-  function openRequest() {
-    const policy = policies.find((item) => item.isActive);
-    setRequestForm({ policyId: policy?.id || '', companyId: companies[0]?.id || '', entityId: '', entityNumber: '', title: '', amount: 0, notes: '' });
+  async function openRequest() {
+    const { policyData, companyData } = await ensureReferenceData();
+    const policy = policyData.find((item) => item.isActive);
+    setRequestForm({ policyId: policy?.id || '', companyId: companyData[0]?.id || '', entityId: '', entityNumber: '', title: '', amount: 0, notes: '' });
     setRequestOpen(true);
   }
 
@@ -170,20 +181,15 @@ export default function ApprovalsPage() {
     <Grid container spacing={2.75}>
       {(message || error) && <Grid size={12}><Alert severity={error ? 'error' : 'success'} onClose={() => error ? setError('') : setMessage('')}>{error || message}</Alert></Grid>}
       <Grid size={12}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { md: 'center' } }}>
-          <Box><Typography variant="h3">Approvals & Maker-Checker</Typography><Typography color="text.secondary">Route high-value ERP transactions through controlled, auditable approval chains.</Typography></Box>
-          <Stack direction="row" spacing={1}><Chip icon={<SafetyCertificateOutlined />} color="primary" label={`Approver: ${user?.fullName || user?.email}`} /><Button onClick={loadData} disabled={loading}>Refresh</Button><Button variant="contained" startIcon={<PlusOutlined />} onClick={openRequest}>Submit Request</Button></Stack>
-        </Stack>
-      </Grid>
-      <Grid size={12}>
         <Box sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1 }}>
+          <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end', p: 2, pb: 0 }}><Chip icon={<SafetyCertificateOutlined />} color="primary" label={`Approver: ${user?.fullName || user?.email}`} /><Button onClick={() => loadTabData(tab, true)} disabled={loading}>Refresh</Button><Button variant="contained" startIcon={<PlusOutlined />} onClick={openRequest}>Submit Request</Button></Stack>
           <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" sx={{ px: 2, borderBottom: 1, borderColor: 'divider' }}>
             <Tab label="Overview" /><Tab label={`My Inbox (${dashboard.myPending || 0})`} /><Tab label="All Requests" /><Tab label="Policies" /><Tab label="Decision History" />
           </Tabs>
           {tab === 0 && <Overview dashboard={dashboard} onInbox={() => setTab(1)} />}
           {tab === 1 && <RequestTable requests={requests.filter((item) => item.canApprove && item.status === 'PENDING')} onDetail={setDetail} onDecision={openDecision} empty="No requests are waiting for your approval." />}
           {tab === 2 && <AllRequests requests={filteredRequests} status={statusFilter} setStatus={setStatusFilter} onDetail={setDetail} onDecision={openDecision} />}
-          {tab === 3 && <Policies policies={policies} onCreate={() => setPolicyOpen(true)} onToggle={(policy) => run(() => api(`/approvals/policies/${policy.id}/status`, token, { method: 'PATCH', body: JSON.stringify({ isActive: !policy.isActive }) }), `${policy.name} ${policy.isActive ? 'disabled' : 'enabled'}`)} />}
+          {tab === 3 && <Policies policies={policies} onCreate={async () => { await ensureReferenceData(); setPolicyOpen(true); }} onToggle={(policy) => run(() => api(`/approvals/policies/${policy.id}/status`, token, { method: 'PATCH', body: JSON.stringify({ isActive: !policy.isActive }) }), `${policy.name} ${policy.isActive ? 'disabled' : 'enabled'}`)} />}
           {tab === 4 && <History history={history} />}
         </Box>
       </Grid>
@@ -226,7 +232,44 @@ function AllRequests({ requests, status, setStatus, onDetail, onDecision }) {
 
 function RequestTable({ requests, onDetail, onDecision, empty }) {
   if (!requests.length) return <Alert severity="info" sx={{ m: 2.5 }}>{empty || 'No approval requests found.'}</Alert>;
-  return <TableContainer><Table><TableHead><TableRow><TableCell>Request</TableCell><TableCell>Module</TableCell><TableCell>Maker</TableCell><TableCell align="right">Amount</TableCell><TableCell>Current Level</TableCell><TableCell>SLA</TableCell><TableCell>Status</TableCell><TableCell align="right">Actions</TableCell></TableRow></TableHead><TableBody>{requests.map((item) => { const current = item.policy.steps.find((step) => step.sequence === item.currentStep); const overdue = item.status === 'PENDING' && item.dueAt && new Date(item.dueAt) < new Date(); return <TableRow key={item.id}><TableCell><Typography fontWeight={600}>{item.title}</Typography><Typography variant="caption">{item.entityNumber || item.entityId}</Typography></TableCell><TableCell>{item.module}</TableCell><TableCell>{item.maker.fullName}</TableCell><TableCell align="right">{money(item.amount)}</TableCell><TableCell>{item.status === 'PENDING' ? `${item.currentStep}. ${current?.name}` : 'Complete'}</TableCell><TableCell><Chip size="small" color={overdue ? 'error' : 'default'} icon={overdue ? <ClockCircleOutlined /> : undefined} label={item.dueAt ? when(item.dueAt) : '-'} /></TableCell><TableCell><Status status={item.status} /></TableCell><TableCell align="right"><Button size="small" startIcon={<EyeOutlined />} onClick={() => onDetail(item)}>View</Button>{item.canApprove && <><Button size="small" color="success" onClick={() => onDecision(item, 'APPROVED')}>Approve</Button><Button size="small" color="error" onClick={() => onDecision(item, 'REJECTED')}>Reject</Button></>}</TableCell></TableRow>; })}</TableBody></Table></TableContainer>;
+  const rows = requests.map((item) => {
+    const current = item.policy.steps.find((step) => step.sequence === item.currentStep);
+    const overdue = item.status === 'PENDING' && item.dueAt && new Date(item.dueAt) < new Date();
+    return {
+      ...item,
+      requestText: `${item.title} | ${item.entityNumber || item.entityId || ''}`,
+      makerName: item.maker.fullName,
+      amountText: money(item.amount),
+      levelText: item.status === 'PENDING' ? `${item.currentStep}. ${current?.name || ''}` : 'Complete',
+      slaText: item.dueAt ? when(item.dueAt) : '-',
+      dueDate: item.dueAt,
+      overdueText: overdue ? 'Overdue' : 'On time'
+    };
+  });
+  return (
+    <CommonDataGrid
+      title="Approval Requests"
+      rows={rows}
+      columns={[
+        { field: 'requestText', headerName: 'Request', flex: 1.2, minWidth: 220 },
+        { field: 'module', headerName: 'Module', width: 130 },
+        { field: 'makerName', headerName: 'Maker', flex: 1, minWidth: 160 },
+        { field: 'amountText', headerName: 'Amount', width: 140, align: 'right', headerAlign: 'right' },
+        { field: 'levelText', headerName: 'Current Level', flex: 1, minWidth: 160 },
+        { field: 'slaText', headerName: 'SLA', width: 190, renderCell: ({ row }) => <Chip size="small" color={row.overdueText === 'Overdue' ? 'error' : 'default'} icon={row.overdueText === 'Overdue' ? <ClockCircleOutlined /> : undefined} label={row.slaText} /> },
+        { field: 'status', headerName: 'Status', width: 130, renderCell: ({ value }) => <Status status={value} /> },
+        { field: 'actions', headerName: 'Actions', width: 250, sortable: false, filterable: false, renderCell: ({ row }) => <Stack direction="row" spacing={0.5}><Button size="small" startIcon={<EyeOutlined />} onClick={() => onDetail(row)}>View</Button>{row.canApprove && <><Button size="small" color="success" onClick={() => onDecision(row, 'APPROVED')}>Approve</Button><Button size="small" color="error" onClick={() => onDecision(row, 'REJECTED')}>Reject</Button></>}</Stack> }
+      ]}
+      searchPlaceholder="Search request, reference, maker, or module"
+      dateField="dueDate"
+      selectFilters={[
+        { field: 'module', label: 'Module' },
+        { field: 'status', label: 'Status' },
+        { field: 'overdueText', label: 'SLA' }
+      ]}
+      fileName="approval-requests"
+    />
+  );
 }
 
 function Policies({ policies, onCreate, onToggle }) {
@@ -234,7 +277,33 @@ function Policies({ policies, onCreate, onToggle }) {
 }
 
 function History({ history }) {
-  return <TableContainer><Table><TableHead><TableRow><TableCell>Date</TableCell><TableCell>Request</TableCell><TableCell>Step</TableCell><TableCell>Approver</TableCell><TableCell>Decision</TableCell><TableCell>Comments</TableCell></TableRow></TableHead><TableBody>{history.map((item) => <TableRow key={item.id}><TableCell>{when(item.createdAt)}</TableCell><TableCell>{item.request.title}<br /><Typography variant="caption">{item.request.entityNumber}</Typography></TableCell><TableCell>{item.step.name}</TableCell><TableCell>{item.approver.fullName}</TableCell><TableCell><Status status={item.decision} /></TableCell><TableCell>{item.comments || '-'}</TableCell></TableRow>)}</TableBody></Table></TableContainer>;
+  const rows = history.map((item) => ({
+    ...item,
+    dateText: when(item.createdAt),
+    createdDate: item.createdAt,
+    requestText: `${item.request.title} | ${item.request.entityNumber || ''}`,
+    stepName: item.step.name,
+    approverName: item.approver.fullName,
+    commentsText: item.comments || '-'
+  }));
+  return (
+    <CommonDataGrid
+      title="Decision History"
+      rows={rows}
+      columns={[
+        { field: 'dateText', headerName: 'Date', width: 190 },
+        { field: 'requestText', headerName: 'Request', flex: 1.2, minWidth: 220 },
+        { field: 'stepName', headerName: 'Step', flex: 1, minWidth: 160 },
+        { field: 'approverName', headerName: 'Approver', flex: 1, minWidth: 160 },
+        { field: 'decision', headerName: 'Decision', width: 130, renderCell: ({ value }) => <Status status={value} /> },
+        { field: 'commentsText', headerName: 'Comments', flex: 1, minWidth: 180 }
+      ]}
+      searchPlaceholder="Search request, approver, decision, or comments"
+      dateField="createdDate"
+      selectFilters={[{ field: 'decision', label: 'Decision' }, { field: 'approverName', label: 'Approver' }]}
+      fileName="approval-history"
+    />
+  );
 }
 
 function Detail({ label, value }) {
