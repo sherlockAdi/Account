@@ -11,6 +11,7 @@ const ModulePlaceholder = Loadable(lazy(() => import('pages/modules/ModulePlaceh
 const IdentityPage = Loadable(lazy(() => import('pages/identity/IdentityPage')));
 const CompaniesPage = Loadable(lazy(() => import('pages/companies/CompaniesPage')));
 const AccountingPage = Loadable(lazy(() => import('pages/accounting/AccountingPage')));
+const CostCenterPage = Loadable(lazy(() => import('pages/cost-center/CostCenterPage')));
 const InventoryPage = Loadable(lazy(() => import('pages/inventory/InventoryPage')));
 const PurchasePage = Loadable(lazy(() => import('pages/purchase/PurchasePage')));
 const SalesPage = Loadable(lazy(() => import('pages/sales/SalesPage')));
@@ -81,6 +82,10 @@ const MainRoutes = {
     {
       path: 'accounting',
       element: <AccountingPage />
+    },
+    {
+      path: 'cost-center',
+      element: <CostCenterPage />
     },
     {
       path: 'sales',

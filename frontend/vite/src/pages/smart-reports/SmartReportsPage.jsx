@@ -7,23 +7,17 @@ import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
-import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
+import CommonDataGrid from 'components/CommonDataGrid';
 import MainCard from 'components/MainCard';
 
 const NLP_API_URL = String(import.meta.env.VITE_NLP_API_URL || 'http://localhost:8003')
   .trim()
   .replace(/\/+$/, '');
-const API_URL = String(import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1')
+const API_URL = String(import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1')
   .trim()
   .replace(/\/+$/, '');
 
@@ -39,6 +33,139 @@ function formatValue(value) {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
+}
+
+function parsePromptDate(value) {
+  if (!value) return null;
+  const cleaned = String(value).trim().replace(/,/g, '').replace(/(\d)(st|nd|rd|th)\b/gi, '$1');
+  const formats = ['YYYY-MM-DD', 'DD/MM/YYYY', 'DD-MM-YYYY', 'DD MMM YYYY', 'DD MMMM YYYY', 'DD/MM/YY', 'DD-MM-YY'];
+  for (const format of formats) {
+    let match = null;
+    if (format === 'YYYY-MM-DD') match = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    else if (format === 'DD/MM/YYYY') match = cleaned.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    else if (format === 'DD-MM-YYYY') match = cleaned.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    else if (format === 'DD/MM/YY') match = cleaned.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+    else if (format === 'DD-MM-YY') match = cleaned.match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/);
+    else if (format === 'DD MMM YYYY') match = cleaned.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/);
+    else if (format === 'DD MMMM YYYY') match = cleaned.match(/^(\d{1,2})\s+([A-Za-z]{4,})\s+(\d{4})$/);
+
+    if (!match) continue;
+
+    const monthLookup = {
+      jan: 1, january: 1,
+      feb: 2, february: 2,
+      mar: 3, march: 3,
+      apr: 4, april: 4,
+      may: 5,
+      jun: 6, june: 6,
+      jul: 7, july: 7,
+      aug: 8, august: 8,
+      sep: 9, sept: 9, september: 9,
+      oct: 10, october: 10,
+      nov: 11, november: 11,
+      dec: 12, december: 12
+    };
+
+    let year;
+    let month;
+    let day;
+    if (format === 'YYYY-MM-DD') {
+      [, year, month, day] = match;
+    } else if (format === 'DD/MM/YYYY' || format === 'DD-MM-YYYY') {
+      [, day, month, year] = match;
+    } else if (format === 'DD/MM/YY' || format === 'DD-MM-YY') {
+      [, day, month, year] = match;
+      year = Number(year) < 50 ? `20${year}` : `19${year}`;
+    } else {
+      [, day, month, year] = match;
+      month = String(monthLookup[String(month).toLowerCase()]) || month;
+    }
+
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+    if (!Number.isNaN(date.getTime())) {
+      return date.toISOString().slice(0, 10);
+    }
+  }
+  return null;
+}
+
+function extractPromptDateRange(prompt = '') {
+  const text = String(prompt || '');
+  const datePattern = '(?:\\d{4}-\\d{2}-\\d{2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|\\d{1,2}\\s+[A-Za-z]{3,9}\\s+\\d{4})';
+  const rangePatterns = [
+    new RegExp(`\\bfrom\\s+(${datePattern})\\s+(?:to|till|until|upto|up to|-)\\s+(${datePattern})\\b`, 'i'),
+    new RegExp(`\\bbetween\\s+(${datePattern})\\s+(?:and|to|-)\\s+(${datePattern})\\b`, 'i'),
+    new RegExp(`\\bfor\\s+(?:the\\s+)?period\\s+(${datePattern})\\s+(?:to|till|until|-)\\s+(${datePattern})\\b`, 'i')
+  ];
+  for (const pattern of rangePatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      return {
+        from: parsePromptDate(match[1]),
+        to: parsePromptDate(match[2])
+      };
+    }
+  }
+
+  const untilPatterns = [new RegExp(`\\b(?:as of|till|until|upto|up to)\\s+(${datePattern})\\b`, 'i')];
+  for (const pattern of untilPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      return { from: null, to: parsePromptDate(match[1]) };
+    }
+  }
+
+  return { from: null, to: null };
+}
+
+function buildSuggestionSeed(prompt = '', companyName = '') {
+  const text = String(prompt || '').trim();
+  const fallback = String(companyName || '').trim();
+  if (!text) return fallback;
+
+  return text
+    .replace(/\bfrom\s+(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\s+(?:to|till|until|upto|up to|-)\s+(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\b/gi, ' ')
+    .replace(/\b(?:as of|till|until|upto|up to)\s+(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\b/gi, ' ')
+    .replace(/\b(voucher detail|voucher details|voucher list|voucher report|day book|trial balance|profit and loss|profit loss|balance sheet|stock summary|stock report|inventory report|customer outstanding|vendor outstanding|receivables|payables|gstr-1|gstr 1|gstr-3b|gstr 3b|input tax credit|itc|hsn summary|hsn report|hsn|show|report|reports|detail|details|summary|company|of|for|from|about|between|and|to|till|until|upto|up to)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || fallback;
+}
+
+function extractRows(value) {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.rows)) return value.rows;
+  if (Array.isArray(value?.items)) return value.items;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value?.result)) return value.result;
+  return [];
+}
+
+function extractSections(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    if (value.sections && typeof value.sections === 'object') return value.sections;
+    const sectionKeys = ['income', 'expenses', 'assets', 'liabilities', 'equity'];
+    if (sectionKeys.some((key) => Array.isArray(value[key]))) {
+      return {
+        ...('period' in value ? { period: value.period } : {}),
+        ...('asOf' in value ? { asOf: value.asOf } : {}),
+        ...('currentPeriodProfit' in value ? { currentPeriodProfit: value.currentPeriodProfit } : {}),
+        ...('totalIncome' in value ? { totalIncome: value.totalIncome } : {}),
+        ...('totalExpenses' in value ? { totalExpenses: value.totalExpenses } : {}),
+        ...('netProfit' in value ? { netProfit: value.netProfit } : {}),
+        ...('totalAssets' in value ? { totalAssets: value.totalAssets } : {}),
+        ...('totalLiabilities' in value ? { totalLiabilities: value.totalLiabilities } : {}),
+        ...('totalEquity' in value ? { totalEquity: value.totalEquity } : {}),
+        ...('totalLiabilitiesAndEquity' in value ? { totalLiabilitiesAndEquity: value.totalLiabilitiesAndEquity } : {}),
+        ...('difference' in value ? { difference: value.difference } : {}),
+        income: value.income || [],
+        expenses: value.expenses || [],
+        assets: value.assets || [],
+        liabilities: value.liabilities || [],
+        equity: value.equity || []
+      };
+    }
+  }
+  return value || {};
 }
 
 async function postJson(url, body) {
@@ -63,118 +190,61 @@ async function getJson(url) {
   return data;
 }
 
-function renderTable(rows) {
+function renderTable(title, rows) {
   if (!rows?.length) {
     return <Alert severity="info">No rows matched this report.</Alert>;
   }
 
-  const columns = Object.keys(rows[0] || {}).filter((column) => !['lines'].includes(column));
+  const columns = Object.keys(rows[0] || {})
+    .filter((column) => !['lines'].includes(column))
+    .map((column) => ({
+      field: column,
+      headerName: column,
+      flex: column.toLowerCase().includes('narration') ? 1.4 : 1,
+      minWidth: column.toLowerCase().includes('narration') ? 220 : 140,
+      renderCell: ({ value }) => formatCell(value, column)
+    }));
 
-  return (
-    <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            {columns.map((column) => (
-              <TableCell key={column} sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
-                {column}
-              </TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {rows.map((row, rowIndex) => (
-            <TableRow key={row.id || row.itemId || row.ledgerId || rowIndex} hover>
-              {columns.map((column) => (
-                <TableCell key={column}>{formatCell(row[column], column)}</TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
-  );
+  return <CommonDataGrid title={title} rows={rows} columns={columns} getRowId={(row, index) => row.id || row.itemId || row.ledgerId || index} fileName="smart-report-result" searchPlaceholder="Search result rows" height={420} />;
 }
 
-function StatementGrid({ rows }) {
+function StatementGrid({ title, rows }) {
   if (!rows?.length) {
     return <Alert severity="info">No rows matched this report.</Alert>;
   }
 
-  return (
-    <Paper
-      variant="outlined"
-      sx={{
-        borderRadius: 2,
-        overflow: 'hidden',
-        borderColor: 'divider'
-      }}
-    >
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1.3fr 0.8fr', md: '1.6fr 1.1fr 0.8fr 0.9fr' },
-          bgcolor: 'grey.100',
-          borderBottom: 1,
-          borderColor: 'divider',
-          px: 2,
-          py: 1.25,
-          gap: 1
-        }}
-      >
-        <Typography variant="caption" color="text.secondary" fontWeight={700}>
-          Ledger
-        </Typography>
-        <Typography variant="caption" color="text.secondary" fontWeight={700} textAlign="right">
-          Amount
-        </Typography>
-        <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ display: { xs: 'none', md: 'block' } }}>
-          Group
-        </Typography>
-        <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ display: { xs: 'none', md: 'block' } }}>
-          Nature
-        </Typography>
-      </Box>
+  const columns = [
+    {
+      field: 'ledgerName',
+      headerName: 'Ledger',
+      flex: 1.3,
+      minWidth: 220,
+      renderCell: ({ row }) => row.ledgerName || row.itemName || row.name || '-'
+    },
+    {
+      field: 'amount',
+      headerName: 'Amount',
+      width: 160,
+      align: 'right',
+      headerAlign: 'right',
+      renderCell: ({ value }) => formatValue(value)
+    },
+    {
+      field: 'groupName',
+      headerName: 'Group',
+      flex: 1,
+      minWidth: 180,
+      renderCell: ({ value }) => value || '-'
+    },
+    {
+      field: 'nature',
+      headerName: 'Nature',
+      width: 140,
+      renderCell: ({ value }) => value || '-'
+    }
+  ];
 
-      <Stack spacing={0}>
-        {rows.map((row, index) => (
-          <Box
-            key={row.id || row.ledgerId || row.itemId || index}
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1.3fr 0.8fr', md: '1.6fr 1.1fr 0.8fr 0.9fr' },
-              gap: 1,
-              px: 2,
-              py: 1.5,
-              borderBottom: index === rows.length - 1 ? 0 : 1,
-              borderColor: 'divider',
-              alignItems: 'center',
-              bgcolor: index % 2 === 0 ? 'background.paper' : 'grey.50'
-            }}
-          >
-            <Box>
-              <Typography variant="body2" fontWeight={700}>
-                {row.ledgerName || row.itemName || row.name || '-'}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'block', md: 'none' } }}>
-                {row.groupName || '-'} {row.nature ? `- ${row.nature}` : ''}
-              </Typography>
-            </Box>
-
-            <Typography variant="body2" sx={{ display: { xs: 'none', md: 'block' } }}>
-              {row.groupName || '-'}
-            </Typography>
-            <Typography variant="body2" sx={{ display: { xs: 'none', md: 'block' } }}>
-              {row.nature || '-'}
-            </Typography>
-            <Typography variant="body2" textAlign="right" fontWeight={700}>
-              {formatValue(row.amount)}
-            </Typography>
-          </Box>
-        ))}
-      </Stack>
-    </Paper>
-  );
+  return <CommonDataGrid title={title} rows={rows} columns={columns} getRowId={(row, index) => row.id || row.ledgerId || row.itemId || index} fileName="statement-grid" searchPlaceholder="Search ledger or group" height={360} />;
 }
 
 function formatCell(value, column) {
@@ -254,28 +324,21 @@ function VoucherList({ rows }) {
 
               <Box component="details" sx={{ '& summary': { cursor: 'pointer', fontWeight: 600, mb: 1 } }}>
                 <summary>Show voucher lines</summary>
-                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Ledger</TableCell>
-                        <TableCell>Type</TableCell>
-                        <TableCell align="right">Amount</TableCell>
-                        <TableCell>Narration</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {(voucher.lines || []).map((line, lineIndex) => (
-                        <TableRow key={`${voucher.id}-${lineIndex}`}>
-                          <TableCell>{line.ledgerName || '-'}</TableCell>
-                          <TableCell>{line.type || '-'}</TableCell>
-                          <TableCell align="right">{formatValue(line.amount)}</TableCell>
-                          <TableCell>{line.narration || '-'}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+                <CommonDataGrid
+                  title={`Voucher Lines - ${voucher.voucherNo}`}
+                  rows={voucher.lines || []}
+                  columns={[
+                    { field: 'ledgerName', headerName: 'Ledger', flex: 1.2, minWidth: 220, renderCell: ({ value }) => value || '-' },
+                    { field: 'type', headerName: 'Type', width: 120, renderCell: ({ value }) => value || '-' },
+                    { field: 'amount', headerName: 'Amount', width: 150, align: 'right', headerAlign: 'right', renderCell: ({ value }) => formatValue(value) },
+                    { field: 'narration', headerName: 'Narration', flex: 1.2, minWidth: 220, renderCell: ({ value }) => value || '-' }
+                  ]}
+                  getRowId={(line, lineIndex) => `${voucher.id}-${lineIndex}`}
+                  fileName={`voucher-lines-${voucher.voucherNo}`}
+                  searchPlaceholder="Search voucher lines"
+                  height={260}
+                  pageSize={5}
+                />
               </Box>
             </Stack>
           </CardContent>
@@ -316,7 +379,7 @@ export default function SmartReportsPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const query = normalize(prompt || companyName);
+    const query = normalize(buildSuggestionSeed(prompt, companyName));
     if (query.length < 2) {
       setSuggestions([]);
       return undefined;
@@ -341,13 +404,35 @@ export default function SmartReportsPage() {
   }, [companyName, prompt]);
 
   function applySuggestion(suggestion) {
-    const value = suggestion.kind === 'company' ? suggestion.name : suggestion.name;
-    setPrompt(value);
+    const name = suggestion.name || suggestion.displayLabel || '';
     if (suggestion.companyName) {
       setCompanyName(suggestion.companyName);
-    } else if (suggestion.kind === 'company') {
-      setCompanyName(suggestion.name);
+    } else if (suggestion.kind === 'company' && name) {
+      setCompanyName(name);
     }
+
+    setPrompt((current) => {
+      const existing = String(current || '').trim();
+      const normalizedExisting = normalize(existing);
+      const normalizedName = normalize(name);
+
+      if (!existing) {
+        return suggestion.kind === 'company' ? `Show voucher detail of ${name}` : name;
+      }
+
+      if (normalizedName && normalizedExisting.includes(normalizedName)) {
+        return existing;
+      }
+
+      if (suggestion.kind === 'company') {
+        if (/\bcompany\b/i.test(existing)) {
+          return existing.replace(/(?:of|for|from|about)\s+(.+?)\s+company\b/i, `of ${name} company`);
+        }
+        return `${existing} ${name}`.trim();
+      }
+
+      return `${existing} ${name}`.trim();
+    });
   }
 
   async function runReport() {
@@ -386,10 +471,13 @@ export default function SmartReportsPage() {
           );
         }
 
+        const promptRange = extractPromptDateRange(prompt);
+        const resolvedFrom = from || promptRange.from;
+        const resolvedTo = to || promptRange.to;
         const query = new URLSearchParams({
           companyId: resolvedCompany.id,
-          ...(from ? { from } : {}),
-          ...(to ? { to } : {})
+          ...(resolvedFrom ? { from: resolvedFrom } : {}),
+          ...(resolvedTo ? { to: resolvedTo } : {})
         });
 
         const fallbackRoutes = {
@@ -423,18 +511,45 @@ export default function SmartReportsPage() {
             };
           },
           'trial-balance': async () => ({
-            kind: 'json',
-            data: await getJson(`${API_URL}/accounting/reports/trial-balance?${query.toString()}`)
+            kind: 'table',
+            rows: extractRows(await getJson(`${API_URL}/accounting/reports/trial-balance?${query.toString()}`))
           }),
-          'profit-loss': async () => ({ kind: 'json', data: await getJson(`${API_URL}/reports/profit-loss?${query.toString()}`) }),
-          'balance-sheet': async () => ({ kind: 'json', data: await getJson(`${API_URL}/reports/balance-sheet?${query.toString()}`) }),
-          'stock-summary': async () => ({ kind: 'json', data: await getJson(`${API_URL}/inventory/reports/stock-summary`) }),
-          'customer-outstanding': async () => ({ kind: 'json', data: await getJson(`${API_URL}/sales/reports/customer-outstanding`) }),
-          'vendor-outstanding': async () => ({ kind: 'json', data: await getJson(`${API_URL}/purchase/reports/vendor-outstanding`) }),
-          'gstr-1': async () => ({ kind: 'json', data: await getJson(`${API_URL}/gst/reports/gstr-1?${query.toString()}`) }),
-          'gstr-3b': async () => ({ kind: 'json', data: await getJson(`${API_URL}/gst/reports/gstr-3b?${query.toString()}`) }),
-          itc: async () => ({ kind: 'json', data: await getJson(`${API_URL}/gst/reports/itc?${query.toString()}`) }),
-          'hsn-summary': async () => ({ kind: 'json', data: await getJson(`${API_URL}/gst/reports/hsn-summary?${query.toString()}`) })
+          'profit-loss': async () => ({
+            kind: 'statement',
+            sections: extractSections(await getJson(`${API_URL}/reports/profit-loss?${query.toString()}`))
+          }),
+          'balance-sheet': async () => ({
+            kind: 'statement',
+            sections: extractSections(await getJson(`${API_URL}/reports/balance-sheet?${query.toString()}`))
+          }),
+          'stock-summary': async () => ({
+            kind: 'table',
+            rows: extractRows(await getJson(`${API_URL}/inventory/reports/stock-summary`))
+          }),
+          'customer-outstanding': async () => ({
+            kind: 'table',
+            rows: extractRows(await getJson(`${API_URL}/sales/reports/customer-outstanding`))
+          }),
+          'vendor-outstanding': async () => ({
+            kind: 'table',
+            rows: extractRows(await getJson(`${API_URL}/purchase/reports/vendor-outstanding`))
+          }),
+          'gstr-1': async () => ({
+            kind: 'table',
+            rows: extractRows(await getJson(`${API_URL}/gst/reports/gstr-1?${query.toString()}`))
+          }),
+          'gstr-3b': async () => ({
+            kind: 'table',
+            rows: extractRows(await getJson(`${API_URL}/gst/reports/gstr-3b?${query.toString()}`))
+          }),
+          itc: async () => ({
+            kind: 'table',
+            rows: extractRows(await getJson(`${API_URL}/gst/reports/itc?${query.toString()}`))
+          }),
+          'hsn-summary': async () => ({
+            kind: 'table',
+            rows: extractRows(await getJson(`${API_URL}/gst/reports/hsn-summary?${query.toString()}`))
+          })
         };
 
         const fallback = fallbackRoutes[report.report_key] || fallbackRoutes['voucher-detail'];
@@ -451,7 +566,7 @@ export default function SmartReportsPage() {
             endpoint: report.report_endpoint
           },
           company: resolvedCompany,
-          period: { from: from || null, to: to || null },
+          period: { from: resolvedFrom || null, to: resolvedTo || null },
           ...payload
         });
       } catch (fallbackError) {
@@ -508,7 +623,7 @@ export default function SmartReportsPage() {
                   {suggestions.map((suggestion) => (
                     <Chip
                       key={`${suggestion.kind}-${suggestion.id}`}
-                      label={suggestion.label}
+                      label={suggestion.displayLabel || suggestion.label}
                       variant="outlined"
                       onClick={() => applySuggestion(suggestion)}
                       sx={{ cursor: 'pointer' }}
@@ -574,7 +689,7 @@ export default function SmartReportsPage() {
                 </Stack>
 
                 {result.kind === 'voucher-list' && <VoucherList rows={result.rows} />}
-                {result.kind === 'table' && renderTable(result.rows || [])}
+                {result.kind === 'table' && renderTable(result.report?.title || 'Smart Report Result', result.rows || [])}
                 {result.kind === 'statement' && (
                   <Stack spacing={2}>
                     {Object.entries(result.sections || {}).map(([key, value]) => (

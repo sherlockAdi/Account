@@ -21,6 +21,7 @@ import { MarketplaceModule } from './marketplace/marketplace.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 import { BudgetModule } from './budget/budget.module';
+import { CostCenterModule } from './cost-center/cost-center.module';
 import { SystemSettingModule } from './system-setting/system-setting.module';
 
 @Module({
@@ -44,6 +45,7 @@ import { SystemSettingModule } from './system-setting/system-setting.module';
     ComplianceModule,
     ApprovalsModule,
     BudgetModule,
+    CostCenterModule,
     SystemSettingModule,
     ModulesModule,
   ],

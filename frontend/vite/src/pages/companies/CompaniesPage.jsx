@@ -106,7 +106,17 @@ function dateValue(value) {
 
 export default function CompaniesPage() {
   const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState(0);
+  const initialTab = (() => {
+    const view = searchParams.get('view');
+    const tabMap = {
+      company: 0,
+      branch: 1,
+      warehouse: 2,
+      'voucher-series': 3
+    };
+    return tabMap[view] ?? 0;
+  })();
+  const [tab, setTab] = useState(initialTab);
   const [companies, setCompanies] = useState([]);
   const [branches, setBranches] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
@@ -127,19 +137,6 @@ export default function CompaniesPage() {
   const [warehouseForm, setWarehouseForm] = useState(emptyWarehouse);
   const [seriesForm, setSeriesForm] = useState(emptySeries);
 
-<<<<<<< HEAD
-  const branches = useMemo(() => companies.flatMap((company) => company.branches.map((branch) => ({ ...branch, company }))), [companies]);
-  const warehouses = useMemo(
-    () => branches.flatMap((branch) => branch.warehouses.map((warehouse) => ({ ...warehouse, branch }))),
-    [branches]
-  );
-  const voucherSeries = useMemo(
-    () => companies.flatMap((company) => company.voucherSeries.map((series) => ({ ...series, company }))),
-    [companies]
-  );
-  async function loadCompanies() {
-    setCompanies(await api('/companies'));
-=======
   async function ensureCompanies(force = false) {
     if (!force && companiesLoaded && companies.length) return companies;
     const companyData = await api('/companies?summary=true');
@@ -186,7 +183,6 @@ export default function CompaniesPage() {
     if (tabIndex === 2) await ensureWarehouses(force);
     if (tabIndex === 3) await ensureVoucherSeries(force);
     setLoadedTabs((current) => ({ ...current, [tabIndex]: true }));
->>>>>>> 9b1acf904f7e7821b672e61428e6e17fed0135ee
   }
 
   useEffect(() => {
@@ -420,43 +416,15 @@ function CompanyGrid({ companies, onCreate, onEdit }) {
   ];
   return (
     <GridShell onCreate={onCreate} createLabel="Create Company">
-<<<<<<< HEAD
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>Company</TableCell>
-            <TableCell>GSTIN</TableCell>
-            <TableCell>Financial Year</TableCell>
-            <TableCell>Branches</TableCell>
-            <TableCell>Status</TableCell>
-            <TableCell align="right">Action</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {companies.map((company) => (
-            <TableRow key={company.id} hover>
-              <TableCell>
-                <Typography variant="subtitle1">{company.name}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {company.code}
-                </Typography>
-              </TableCell>
-              <TableCell>{company.gstin || '-'}</TableCell>
-              <TableCell>{formatDate(company.financialYearStart)}</TableCell>
-              <TableCell>{company.branches.length}</TableCell>
-              <TableCell>{company.isActive ? 'Active' : 'Inactive'}</TableCell>
-              <TableCell align="right">
-                <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(company)}>
-                  Edit
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-=======
-      <CommonDataGrid title="Companies" rows={rows} columns={columns} fileName="companies" searchPlaceholder="Search companies" dateField="financialYearDate" selectFilters={[{ field: 'statusText', label: 'Status', options: statusOptions }]} />
->>>>>>> 9b1acf904f7e7821b672e61428e6e17fed0135ee
+      <CommonDataGrid
+        title="Companies"
+        rows={rows}
+        columns={columns}
+        fileName="companies"
+        searchPlaceholder="Search companies"
+        dateField="financialYearDate"
+        selectFilters={[{ field: 'statusText', label: 'Status', options: statusOptions }]}
+      />
     </GridShell>
   );
 }
@@ -482,44 +450,18 @@ function BranchGrid({ branches, onCreate, onEdit }) {
   ];
   return (
     <GridShell onCreate={onCreate} createLabel="Create Branch">
-<<<<<<< HEAD
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>Branch</TableCell>
-            <TableCell>Company</TableCell>
-            <TableCell>GSTIN</TableCell>
-            <TableCell>Warehouses</TableCell>
-            <TableCell>Status</TableCell>
-            <TableCell align="right">Action</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {branches.map((branch) => (
-            <TableRow key={branch.id} hover>
-              <TableCell>
-                <Typography variant="subtitle1">{branch.name}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {branch.code}
-                  {branch.isPrimary ? ' | Primary' : ''}
-                </Typography>
-              </TableCell>
-              <TableCell>{branch.company.name}</TableCell>
-              <TableCell>{branch.gstin || '-'}</TableCell>
-              <TableCell>{branch.warehouses.length}</TableCell>
-              <TableCell>{branch.isActive ? 'Active' : 'Inactive'}</TableCell>
-              <TableCell align="right">
-                <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(branch)}>
-                  Edit
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-=======
-      <CommonDataGrid title="Branches" rows={rows} columns={columns} fileName="branches" searchPlaceholder="Search branches" selectFilters={[{ field: 'companyName', label: 'Company', options: companyOptions }, { field: 'primaryText', label: 'Primary', options: [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }] }, { field: 'statusText', label: 'Status', options: statusOptions }]} />
->>>>>>> 9b1acf904f7e7821b672e61428e6e17fed0135ee
+      <CommonDataGrid
+        title="Branches"
+        rows={rows}
+        columns={columns}
+        fileName="branches"
+        searchPlaceholder="Search branches"
+        selectFilters={[
+          { field: 'companyName', label: 'Company', options: companyOptions },
+          { field: 'primaryText', label: 'Primary', options: [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }] },
+          { field: 'statusText', label: 'Status', options: statusOptions }
+        ]}
+      />
     </GridShell>
   );
 }
@@ -543,42 +485,18 @@ function WarehouseGrid({ warehouses, onCreate, onEdit }) {
   ];
   return (
     <GridShell onCreate={onCreate} createLabel="Create Warehouse">
-<<<<<<< HEAD
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>Warehouse</TableCell>
-            <TableCell>Branch</TableCell>
-            <TableCell>City</TableCell>
-            <TableCell>Status</TableCell>
-            <TableCell align="right">Action</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {warehouses.map((warehouse) => (
-            <TableRow key={warehouse.id} hover>
-              <TableCell>
-                <Typography variant="subtitle1">{warehouse.name}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {warehouse.code}
-                  {warehouse.isPrimary ? ' | Primary' : ''}
-                </Typography>
-              </TableCell>
-              <TableCell>{warehouse.branch.name}</TableCell>
-              <TableCell>{warehouse.city || '-'}</TableCell>
-              <TableCell>{warehouse.isActive ? 'Active' : 'Inactive'}</TableCell>
-              <TableCell align="right">
-                <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(warehouse)}>
-                  Edit
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-=======
-      <CommonDataGrid title="Warehouses" rows={rows} columns={columns} fileName="warehouses" searchPlaceholder="Search warehouses" selectFilters={[{ field: 'branchName', label: 'Branch', options: branchOptions }, { field: 'primaryText', label: 'Primary', options: [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }] }, { field: 'statusText', label: 'Status', options: statusOptions }]} />
->>>>>>> 9b1acf904f7e7821b672e61428e6e17fed0135ee
+      <CommonDataGrid
+        title="Warehouses"
+        rows={rows}
+        columns={columns}
+        fileName="warehouses"
+        searchPlaceholder="Search warehouses"
+        selectFilters={[
+          { field: 'branchName', label: 'Branch', options: branchOptions },
+          { field: 'primaryText', label: 'Primary', options: [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }] },
+          { field: 'statusText', label: 'Status', options: statusOptions }
+        ]}
+      />
     </GridShell>
   );
 }
@@ -601,42 +519,17 @@ function SeriesGrid({ series, onCreate, onEdit }) {
   ];
   return (
     <GridShell onCreate={onCreate} createLabel="Create Series">
-<<<<<<< HEAD
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>Module</TableCell>
-            <TableCell>Company</TableCell>
-            <TableCell>Format</TableCell>
-            <TableCell>Next</TableCell>
-            <TableCell>Status</TableCell>
-            <TableCell align="right">Action</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {series.map((item) => (
-            <TableRow key={item.id} hover>
-              <TableCell>{item.module}</TableCell>
-              <TableCell>{item.company.name}</TableCell>
-              <TableCell>
-                {item.prefix}
-                {String(item.nextNumber).padStart(item.padding, '0')}
-                {item.suffix || ''}
-              </TableCell>
-              <TableCell>{item.nextNumber}</TableCell>
-              <TableCell>{item.isActive ? 'Active' : 'Inactive'}</TableCell>
-              <TableCell align="right">
-                <Button size="small" startIcon={<EditOutlined />} onClick={() => onEdit(item)}>
-                  Edit
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-=======
-      <CommonDataGrid title="Voucher Series" rows={rows} columns={columns} fileName="voucher-series" searchPlaceholder="Search series" selectFilters={[{ field: 'companyName', label: 'Company', options: companyOptions }, { field: 'statusText', label: 'Status', options: statusOptions }]} />
->>>>>>> 9b1acf904f7e7821b672e61428e6e17fed0135ee
+      <CommonDataGrid
+        title="Voucher Series"
+        rows={rows}
+        columns={columns}
+        fileName="voucher-series"
+        searchPlaceholder="Search series"
+        selectFilters={[
+          { field: 'companyName', label: 'Company', options: companyOptions },
+          { field: 'statusText', label: 'Status', options: statusOptions }
+        ]}
+      />
     </GridShell>
   );
 }

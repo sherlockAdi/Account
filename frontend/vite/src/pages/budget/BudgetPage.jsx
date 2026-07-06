@@ -1,49 +1,29 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
-import Grid from '@mui/material/Grid';
-import IconButton from '@mui/material/IconButton';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
+import Tab from '@mui/material/Tab';
+import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
-import DeleteOutlined from '@ant-design/icons/DeleteOutlined';
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
-import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
 
 import CommonDataGrid from 'components/CommonDataGrid';
 import DateField from 'components/DateField';
-import { formatDate, todayIso } from 'utils/dateFormat';
+import { formatDate } from 'utils/dateFormat';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
-const money = (value) => Number(value || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
-const currentYear = new Date().getFullYear();
-const emptyLine = { ledgerId: '', branchId: '', allocatedAmount: 0, notes: '' };
-const emptyForm = {
-  name: '',
-  code: '',
-  fiscalYear: `${currentYear}-${String(currentYear + 1).slice(-2)}`,
-  periodFrom: `${currentYear}-04-01`,
-  periodTo: `${currentYear + 1}-03-31`,
-  status: 'DRAFT',
-  notes: '',
-  lines: [{ ...emptyLine }]
-};
+const budgetCategories = ['ANNUAL', 'GOVERNMENT_GRANT'];
+const budgetStatuses = ['DRAFT', 'ACTIVE', 'CLOSED', 'ARCHIVED'];
 
 async function api(path, options) {
   const response = await fetch(`${API_URL}${path}`, {
@@ -57,225 +37,317 @@ async function api(path, options) {
   return response.json();
 }
 
+const emptyBudgetTypeForm = {
+  name: '',
+  code: '',
+  category: 'ANNUAL',
+  costCenterId: '',
+  isAnnual: false,
+  isActive: true
+};
+
+const emptyBudgetForm = {
+  budgetTypeId: '',
+  name: '',
+  code: '',
+  fiscalYear: '',
+  costCenterId: '',
+  periodFrom: '',
+  periodTo: '',
+  totalAmount: 0,
+  status: 'DRAFT',
+  notes: ''
+};
+
 export default function BudgetPage() {
-  const [dashboard, setDashboard] = useState({ budgets: [] });
+  const [tab, setTab] = useState(0);
+  const [budgetTypes, setBudgetTypes] = useState([]);
   const [budgets, setBudgets] = useState([]);
-  const [ledgers, setLedgers] = useState([]);
-  const [branches, setBranches] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [costCenters, setCostCenters] = useState([]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [budgetTypeOpen, setBudgetTypeOpen] = useState(false);
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const [budgetTypeForm, setBudgetTypeForm] = useState(emptyBudgetTypeForm);
+  const [budgetForm, setBudgetForm] = useState(emptyBudgetForm);
 
   async function loadData() {
     try {
-      setLoading(true);
       setError('');
-      const [dashboardData, budgetData, ledgerData, branchData] = await Promise.all([
-        api('/budget/dashboard'),
+      const [budgetTypeData, budgetData, costCenterData] = await Promise.all([
+        api('/accounting/budgets'),
         api('/budget/budgets'),
-        api('/budget/ledgers'),
-        api('/budget/branches')
+        api('/cost-center/centers')
       ]);
-      setDashboard(dashboardData);
+      setBudgetTypes(budgetTypeData);
       setBudgets(budgetData);
-      setLedgers(ledgerData);
-      setBranches(branchData);
+      setCostCenters(costCenterData);
     } catch (loadError) {
       setError(loadError.message);
-    } finally {
-      setLoading(false);
     }
   }
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  function openCreate() {
-    setForm({
-      ...emptyForm,
-      code: `BUD-${todayIso().replaceAll('-', '').slice(0, 6)}`,
-      lines: [{ ...emptyLine, ledgerId: ledgers[0]?.id || '' }]
-    });
-    setOpen(true);
+  const budgetTypeRows = useMemo(
+    () =>
+      budgetTypes.map((budgetType) => ({
+        ...budgetType,
+        budgetTypeText: `${budgetType.name} | ${budgetType.code}`,
+        categoryText: budgetType.category || '-',
+        costCenterText: budgetType.costCenter?.name || '-',
+        annualText: budgetType.isAnnual ? 'Yes' : 'No',
+        statusText: budgetType.isActive ? 'Active' : 'Inactive'
+      })),
+    [budgetTypes]
+  );
+
+  const budgetRows = useMemo(
+    () =>
+      budgets.map((budget) => ({
+        ...budget,
+        budgetText: `${budget.name} | ${budget.code}`,
+        budgetTypeText: budget.budgetType ? `${budget.budgetType.name} | ${budget.budgetType.code}` : '-',
+        costCenterText: budget.costCenter?.name || '-',
+        fiscalYearText: budget.fiscalYear || '-',
+        periodText: `${formatDate(budget.periodFrom)} to ${formatDate(budget.periodTo)}`,
+        totalText: Number(budget.totalAmount || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR' }),
+        statusText: budget.status || '-',
+        notesText: budget.notes || '-'
+      })),
+    [budgets]
+  );
+
+  function openBudgetTypeDialog() {
+    setBudgetOpen(false);
+    setBudgetTypeForm(emptyBudgetTypeForm);
+    setBudgetTypeOpen(true);
   }
 
-  function updateLine(index, changes) {
-    setForm({ ...form, lines: form.lines.map((line, lineIndex) => lineIndex === index ? { ...line, ...changes } : line) });
+  function openBudgetDialog() {
+    setBudgetTypeOpen(false);
+    setBudgetForm(emptyBudgetForm);
+    setBudgetOpen(true);
   }
 
-  async function run(action, success) {
+  async function run(action, success, close) {
     try {
       setError('');
       setMessage('');
-      const result = await action();
+      await action();
+      close();
       setMessage(success);
       await loadData();
-      return result;
     } catch (actionError) {
       setError(actionError.message);
-      return null;
     }
+  }
+
+  async function saveBudgetType() {
+    const payload = {
+      name: budgetTypeForm.name.trim(),
+      code: budgetTypeForm.code.trim().toUpperCase(),
+      category: budgetTypeForm.category,
+      costCenterId: budgetTypeForm.costCenterId || undefined,
+      isAnnual: budgetTypeForm.isAnnual,
+      isActive: budgetTypeForm.isActive
+    };
+    await run(() => api('/accounting/budgets', { method: 'POST', body: JSON.stringify(payload) }), 'Budget Type created', () => setBudgetTypeOpen(false));
   }
 
   async function saveBudget() {
     const payload = {
-      ...form,
-      code: form.code.toUpperCase(),
-      lines: form.lines
-        .filter((line) => line.ledgerId && Number(line.allocatedAmount) >= 0)
-        .map((line) => ({ ...line, branchId: line.branchId || undefined, allocatedAmount: Number(line.allocatedAmount) }))
+      budgetTypeId: budgetForm.budgetTypeId || undefined,
+      name: budgetForm.name.trim(),
+      code: budgetForm.code.trim().toUpperCase(),
+      fiscalYear: budgetForm.fiscalYear.trim(),
+      costCenterId: budgetForm.costCenterId || undefined,
+      periodFrom: budgetForm.periodFrom,
+      periodTo: budgetForm.periodTo,
+      totalAmount: Number(budgetForm.totalAmount || 0),
+      status: budgetForm.status,
+      notes: budgetForm.notes.trim() || undefined
     };
-    const result = await run(() => api('/budget/budgets', { method: 'POST', body: JSON.stringify(payload) }), 'Budget created');
-    if (result) setOpen(false);
+    await run(() => api('/budget/budgets', { method: 'POST', body: JSON.stringify(payload) }), 'Budget created', () => setBudgetOpen(false));
   }
 
-  async function setStatus(budget, status) {
-    await run(() => api(`/budget/budgets/${budget.id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }), `Budget ${status.toLowerCase()}`);
-  }
-
-  const totalDraft = form.lines.reduce((sum, line) => sum + Number(line.allocatedAmount || 0), 0);
-
   return (
-    <Grid container spacing={2.75}>
-      {(message || error) && <Grid size={12}><Alert severity={error ? 'error' : 'success'} onClose={() => error ? setError('') : setMessage('')}>{error || message}</Alert></Grid>}
-      <Grid size={12}>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ justifyContent: 'space-between', alignItems: { md: 'flex-start' } }}>
-          <Box sx={{ minWidth: 0, flex: 1 }}><Typography variant="h3">Budget</Typography><Typography color="text.secondary">Plan budgets, track utilization, and compare actual spending with approved allocations.</Typography></Box>
-          <Stack direction="row" spacing={1} sx={{ flexShrink: 0, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
-            <Button startIcon={<ReloadOutlined />} onClick={loadData} disabled={loading}>{loading ? 'Loading...' : 'Refresh'}</Button>
-            <Button variant="contained" startIcon={<PlusOutlined />} onClick={openCreate}>Create Budget</Button>
-          </Stack>
-        </Stack>
-      </Grid>
-      <Grid size={12}><BudgetOverview dashboard={dashboard} /></Grid>
-      <Grid size={12}><BudgetTable budgets={budgets} onStatus={setStatus} /></Grid>
-
-      <Dialog open={open} onClose={() => setOpen(false)} fullWidth maxWidth="lg">
-        <DialogTitle>Create Budget</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, md: 4 }}><TextField fullWidth label="Budget Name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></Grid>
-              <Grid size={{ xs: 12, md: 2 }}><TextField fullWidth label="Code" value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} /></Grid>
-              <Grid size={{ xs: 12, md: 2 }}><TextField fullWidth label="Fiscal Year" value={form.fiscalYear} onChange={(event) => setForm({ ...form, fiscalYear: event.target.value })} /></Grid>
-              <Grid size={{ xs: 12, md: 2 }}><DateField fullWidth label="From" value={form.periodFrom} onChange={(event) => setForm({ ...form, periodFrom: event.target.value })} /></Grid>
-              <Grid size={{ xs: 12, md: 2 }}><DateField fullWidth label="To" value={form.periodTo} onChange={(event) => setForm({ ...form, periodTo: event.target.value })} /></Grid>
-            </Grid>
-            <TextField label="Notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
-            <Table size="small">
-              <TableHead><TableRow><TableCell>Ledger</TableCell><TableCell>Branch</TableCell><TableCell align="right">Allocated Amount</TableCell><TableCell>Notes</TableCell><TableCell align="right">Action</TableCell></TableRow></TableHead>
-              <TableBody>
-                {form.lines.map((line, index) => (
-                  <TableRow key={index}>
-                    <TableCell><TextField select fullWidth size="small" value={line.ledgerId} onChange={(event) => updateLine(index, { ledgerId: event.target.value })}>{ledgers.map((ledger) => <MenuItem key={ledger.id} value={ledger.id}>{ledger.name} ({ledger.group.nature})</MenuItem>)}</TextField></TableCell>
-                    <TableCell><TextField select fullWidth size="small" value={line.branchId} onChange={(event) => updateLine(index, { branchId: event.target.value })}><MenuItem value="">All branches</MenuItem>{branches.map((branch) => <MenuItem key={branch.id} value={branch.id}>{branch.name}</MenuItem>)}</TextField></TableCell>
-                    <TableCell align="right"><TextField size="small" type="number" value={line.allocatedAmount} onChange={(event) => updateLine(index, { allocatedAmount: event.target.value })} inputProps={{ min: 0, style: { textAlign: 'right' } }} /></TableCell>
-                    <TableCell><TextField fullWidth size="small" value={line.notes} onChange={(event) => updateLine(index, { notes: event.target.value })} /></TableCell>
-                    <TableCell align="right"><IconButton color="error" disabled={form.lines.length === 1} onClick={() => setForm({ ...form, lines: form.lines.filter((_, lineIndex) => lineIndex !== index) })}><DeleteOutlined /></IconButton></TableCell>
-                  </TableRow>
-                ))}
-                <TableRow><TableCell colSpan={2}><Button startIcon={<PlusOutlined />} onClick={() => setForm({ ...form, lines: [...form.lines, { ...emptyLine, ledgerId: ledgers[0]?.id || '' }] })}>Add Line</Button></TableCell><TableCell align="right"><strong>{money(totalDraft)}</strong></TableCell><TableCell colSpan={2} /></TableRow>
-              </TableBody>
-            </Table>
-          </Stack>
-        </DialogContent>
-        <DialogActions><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="contained" onClick={saveBudget}>Save Budget</Button></DialogActions>
-      </Dialog>
-    </Grid>
-  );
-}
-
-function BudgetOverview({ dashboard }) {
-  const cards = [
-    ['Budgets', dashboard.budgetCount || 0],
-    ['Active', dashboard.activeCount || 0],
-    ['Allocated', money(dashboard.allocatedAmount)],
-    ['Actual', money(dashboard.actualAmount)],
-    ['Remaining', money(dashboard.remainingAmount)],
-    ['Utilization', `${Number(dashboard.utilizationPercent || 0).toFixed(2)}%`]
-  ];
-  return (
-    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: 'repeat(3, minmax(0, 1fr))', xl: 'repeat(6, minmax(0, 1fr))' }, gap: 2 }}>
-      {cards.map(([label, value]) => (
-        <Card key={label} variant="outlined" sx={{ minWidth: 0 }}>
-          <CardContent sx={{ minWidth: 0, p: 2.25, '&:last-child': { pb: 2.25 } }}>
-            <Typography color="text.secondary" sx={{ mb: 0.5 }}>{label}</Typography>
-            <Typography sx={{ fontWeight: 700, fontSize: { xs: 20, lg: 22 }, lineHeight: 1.25, overflowWrap: 'anywhere' }}>{value}</Typography>
-          </CardContent>
-        </Card>
-      ))}
-    </Box>
-  );
-}
-
-function BudgetTable({ budgets, onStatus }) {
-  const rows = budgets.map((budget) => ({
-    ...budget,
-    budgetName: `${budget.name} ${budget.code} / ${budget.fiscalYear}`,
-    fromDate: budget.periodFrom,
-    period: `${formatDate(budget.periodFrom)} to ${formatDate(budget.periodTo)}`,
-    allocated: Number(budget.totalAmount || 0),
-    actual: Number(budget.actualAmount || 0),
-    remaining: Number(budget.remainingAmount || 0),
-    utilization: Number(budget.utilizationPercent || 0),
-    lineText: budget.lines?.map((line) => `${line.ledger.name}: ${money(line.allocatedAmount)} (${Number(line.utilizationPercent || 0).toFixed(1)}%)`).join(' | ') || '-'
-  }));
-  const columns = [
-    { field: 'budgetName', headerName: 'Budget', flex: 1.1, minWidth: 240 },
-    { field: 'period', headerName: 'Period', flex: 0.9, minWidth: 190 },
-    { field: 'status', headerName: 'Status', flex: 0.7, minWidth: 130 },
-    { field: 'allocated', headerName: 'Allocated', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => money(value) },
-    { field: 'actual', headerName: 'Actual', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => money(value) },
-    { field: 'remaining', headerName: 'Remaining', type: 'number', flex: 0.8, minWidth: 140, valueFormatter: (value) => money(value) },
-    { field: 'utilization', headerName: 'Utilization %', type: 'number', flex: 0.8, minWidth: 150, valueFormatter: (value) => `${Number(value || 0).toFixed(2)}%` },
-    { field: 'lineText', headerName: 'Lines', flex: 1.7, minWidth: 360 },
-    {
-      field: 'actions',
-      headerName: 'Actions',
-      sortable: false,
-      filterable: false,
-      exportable: false,
-      flex: 1,
-      minWidth: 230,
-      renderCell: (params) => (
-        <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
-          {params.row.status === 'DRAFT' && <Button size="small" onClick={() => onStatus(params.row, 'ACTIVE')}>Activate</Button>}
-          {params.row.status === 'ACTIVE' && <Button size="small" onClick={() => onStatus(params.row, 'CLOSED')}>Close</Button>}
-          {params.row.status !== 'ARCHIVED' && <Button size="small" color="warning" onClick={() => onStatus(params.row, 'ARCHIVED')}>Archive</Button>}
-        </Stack>
-      )
-    }
-  ];
-  return (
-    <CommonDataGrid
-      title="Budgets"
-      rows={rows}
-      columns={columns}
-      fileName="budgets"
-      searchPlaceholder="Search budgets"
-      dateField="fromDate"
-      selectFilters={[{ field: 'status', label: 'Status', options: Array.from(new Set(rows.map((row) => row.status))).map((status) => ({ value: status, label: status })) }]}
-      height={560}
-    />
-  );
-}
-
-function BudgetLines({ lines }) {
-  return (
-    <Stack spacing={0.75}>
-      {lines.map((line) => (
-        <Box key={line.id} sx={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 1fr) 120px 60px', gap: 1, alignItems: 'center' }}>
-          <Typography>{line.ledger.name}</Typography>
-          <Typography align="right" sx={{ whiteSpace: 'nowrap' }}>{money(line.allocatedAmount)}</Typography>
-          <Typography align="right" variant="caption" color="text.secondary">{Number(line.utilizationPercent || 0).toFixed(1)}%</Typography>
+    <Stack spacing={2.5} sx={{ p: 2.5 }}>
+      {(message || error) && (
+        <Box>
+          <Alert severity={error ? 'error' : 'success'} onClose={() => (error ? setError('') : setMessage(''))}>
+            {error || message}
+          </Alert>
         </Box>
-      ))}
+      )}
+
+      <Box>
+        <Typography variant="h3">Budget</Typography>
+        <Typography color="text.secondary">Simple budget types and budgets with optional cost centre reference.</Typography>
+      </Box>
+
+      <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable">
+        <Tab label="Budget Type" />
+        <Tab label="Budget" />
+      </Tabs>
+
+      {tab === 0 && (
+        <Stack spacing={2.5}>
+          <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box>
+              <Typography variant="h5">Budget Types</Typography>
+              <Typography color="text.secondary">Which type of budget this is, like annual budget or government budget.</Typography>
+            </Box>
+            <Button variant="contained" startIcon={<PlusOutlined />} onClick={() => openBudgetTypeDialog()}>
+              Create Budget Type
+            </Button>
+          </Stack>
+          <CommonDataGrid
+            title="Budget Types"
+            rows={budgetTypeRows}
+            columns={[
+              { field: 'budgetTypeText', headerName: 'Budget Type', flex: 1.2, minWidth: 240 },
+              { field: 'categoryText', headerName: 'Category', width: 180, renderCell: ({ value }) => <Chip size="small" label={value} variant="outlined" /> },
+              { field: 'costCenterText', headerName: 'Cost Centre', flex: 1, minWidth: 180 },
+              { field: 'annualText', headerName: 'Annual', width: 120 },
+              { field: 'statusText', headerName: 'Status', width: 120, renderCell: ({ value }) => <Chip size="small" label={value} color={value === 'Active' ? 'success' : 'default'} variant="outlined" /> }
+            ]}
+            fileName="budget-types"
+            searchPlaceholder="Search budget types"
+            selectFilters={[
+              { field: 'categoryText', label: 'Category', options: budgetCategories.map((category) => ({ value: category, label: category })) },
+              { field: 'annualText', label: 'Annual', options: [{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }] },
+              { field: 'statusText', label: 'Status', options: [{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }] }
+            ]}
+            height={560}
+          />
+        </Stack>
+      )}
+
+      {tab === 1 && (
+        <Stack spacing={2.5}>
+          <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box>
+              <Typography variant="h5">Budget</Typography>
+              <Typography color="text.secondary">Budget master with optional cost centre reference.</Typography>
+            </Box>
+            <Button variant="contained" startIcon={<PlusOutlined />} onClick={() => openBudgetDialog()}>
+              Create Budget
+            </Button>
+          </Stack>
+          <CommonDataGrid
+            title="Budgets"
+            rows={budgetRows}
+            columns={[
+              { field: 'budgetText', headerName: 'Budget', flex: 1.2, minWidth: 220 },
+              { field: 'budgetTypeText', headerName: 'Budget Type', flex: 1.1, minWidth: 200 },
+              { field: 'costCenterText', headerName: 'Cost Centre', flex: 1, minWidth: 180 },
+              { field: 'fiscalYearText', headerName: 'Fiscal Year', width: 140 },
+              { field: 'periodText', headerName: 'Period', flex: 1.2, minWidth: 220 },
+              { field: 'totalText', headerName: 'Amount', width: 150, align: 'right', headerAlign: 'right' },
+              { field: 'statusText', headerName: 'Status', width: 120, renderCell: ({ value }) => <Chip size="small" label={value} color={value === 'ACTIVE' ? 'success' : 'default'} variant="outlined" /> }
+            ]}
+            fileName="budgets"
+            searchPlaceholder="Search budgets"
+            selectFilters={[
+              { field: 'costCenterText', label: 'Cost Centre', options: Array.from(new Set(budgetRows.map((row) => row.costCenterText))).map((value) => ({ value, label: value })) },
+              { field: 'statusText', label: 'Status', options: budgetStatuses.map((value) => ({ value, label: value })) }
+            ]}
+            height={560}
+          />
+        </Stack>
+      )}
+
+      <Dialog open={budgetTypeOpen} onClose={() => setBudgetTypeOpen(false)} fullWidth maxWidth="sm">
+        <Box component="form" onSubmit={(event) => { event.preventDefault(); saveBudgetType().catch((saveError) => setError(saveError.message)); }}>
+          <DialogTitle>Create Budget Type</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField label="Name" value={budgetTypeForm.name} onChange={(event) => setBudgetTypeForm({ ...budgetTypeForm, name: event.target.value })} required />
+              <TextField label="Code" value={budgetTypeForm.code} onChange={(event) => setBudgetTypeForm({ ...budgetTypeForm, code: event.target.value })} required />
+              <TextField select label="Category" value={budgetTypeForm.category} onChange={(event) => setBudgetTypeForm({ ...budgetTypeForm, category: event.target.value })}>
+                {budgetCategories.map((category) => (
+                  <MenuItem key={category} value={category}>
+                    {category}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField select label="Cost Centre" value={budgetTypeForm.costCenterId} onChange={(event) => setBudgetTypeForm({ ...budgetTypeForm, costCenterId: event.target.value })}>
+                <MenuItem value="">Optional</MenuItem>
+                {costCenters.map((costCenter) => (
+                  <MenuItem key={costCenter.id} value={costCenter.id}>
+                    {costCenter.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField select label="Annual Budget" value={budgetTypeForm.isAnnual ? 'yes' : 'no'} onChange={(event) => setBudgetTypeForm({ ...budgetTypeForm, isAnnual: event.target.value === 'yes' })}>
+                <MenuItem value="yes">Yes</MenuItem>
+                <MenuItem value="no">No</MenuItem>
+              </TextField>
+              <TextField select label="Status" value={budgetTypeForm.isActive ? 'yes' : 'no'} onChange={(event) => setBudgetTypeForm({ ...budgetTypeForm, isActive: event.target.value === 'yes' })}>
+                <MenuItem value="yes">Active</MenuItem>
+                <MenuItem value="no">Inactive</MenuItem>
+              </TextField>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setBudgetTypeOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="contained">Save</Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
+
+      <Dialog open={budgetOpen} onClose={() => setBudgetOpen(false)} fullWidth maxWidth="sm">
+        <Box component="form" onSubmit={(event) => { event.preventDefault(); saveBudget().catch((saveError) => setError(saveError.message)); }}>
+          <DialogTitle>Create Budget</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField label="Name" value={budgetForm.name} onChange={(event) => setBudgetForm({ ...budgetForm, name: event.target.value })} required />
+              <TextField label="Code" value={budgetForm.code} onChange={(event) => setBudgetForm({ ...budgetForm, code: event.target.value })} required />
+              <TextField select label="Budget Type" value={budgetForm.budgetTypeId} onChange={(event) => setBudgetForm({ ...budgetForm, budgetTypeId: event.target.value })}>
+                <MenuItem value="">Optional</MenuItem>
+                {budgetTypes.map((budgetType) => (
+                  <MenuItem key={budgetType.id} value={budgetType.id}>
+                    {budgetType.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField label="Fiscal Year" value={budgetForm.fiscalYear} onChange={(event) => setBudgetForm({ ...budgetForm, fiscalYear: event.target.value })} required />
+              <TextField select label="Cost Centre" value={budgetForm.costCenterId} onChange={(event) => setBudgetForm({ ...budgetForm, costCenterId: event.target.value })}>
+                <MenuItem value="">Optional</MenuItem>
+                {costCenters.map((costCenter) => (
+                  <MenuItem key={costCenter.id} value={costCenter.id}>
+                    {costCenter.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <DateField fullWidth label="Period From" value={budgetForm.periodFrom} onChange={(event) => setBudgetForm({ ...budgetForm, periodFrom: event.target.value })} required />
+              <DateField fullWidth label="Period To" value={budgetForm.periodTo} onChange={(event) => setBudgetForm({ ...budgetForm, periodTo: event.target.value })} required />
+              <TextField
+                label="Amount"
+                type="number"
+                value={budgetForm.totalAmount}
+                onChange={(event) => setBudgetForm({ ...budgetForm, totalAmount: event.target.value })}
+                inputProps={{ min: 0, step: '0.01' }}
+              />
+              <TextField select label="Status" value={budgetForm.status} onChange={(event) => setBudgetForm({ ...budgetForm, status: event.target.value })}>
+                {budgetStatuses.map((status) => (
+                  <MenuItem key={status} value={status}>
+                    {status}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField label="Notes" value={budgetForm.notes} onChange={(event) => setBudgetForm({ ...budgetForm, notes: event.target.value })} multiline minRows={3} />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setBudgetOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="contained">Save</Button>
+          </DialogActions>
+        </Box>
+      </Dialog>
     </Stack>
   );
-}
-
-function BudgetStatusChip({ status }) {
-  const color = status === 'ACTIVE' ? 'success' : status === 'DRAFT' ? 'warning' : status === 'CLOSED' ? 'primary' : 'default';
-  return <Chip size="small" color={color} label={status} />;
 }

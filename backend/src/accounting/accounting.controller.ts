@@ -6,10 +6,12 @@ import { CreateAccountGroupDto } from './dto/create-account-group.dto';
 import { CreateBudgetGrantDto } from './dto/create-budget-grant.dto';
 import { CreateBudgetTypeDto } from './dto/create-budget-type.dto';
 import { CreateLedgerDto } from './dto/create-ledger.dto';
+import { CreateLedgerTypeMasterDto } from './dto/create-ledger-type-master.dto';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { CreateVoucherTypeDto } from './dto/create-voucher-type.dto';
 import { UpdateAccountGroupDto } from './dto/update-account-group.dto';
 import { UpdateLedgerDto } from './dto/update-ledger.dto';
+import { UpdateLedgerTypeMasterDto } from './dto/update-ledger-type-master.dto';
 import { UpdateVoucherBudgetDto } from './dto/update-voucher-budget.dto';
 import { UpdateVoucherTypeDto } from './dto/update-voucher-type.dto';
 
@@ -52,6 +54,24 @@ export class AccountingController {
   @ApiOkResponse({ description: 'Update ledger.' })
   updateLedger(@Param('id') id: string, @Body() dto: UpdateLedgerDto) {
     return this.accountingService.updateLedger(id, dto);
+  }
+
+  @Get('ledger-types')
+  @ApiOkResponse({ description: 'List ledger type masters.' })
+  listLedgerTypes(@Query('companyId') companyId?: string) {
+    return this.accountingService.listLedgerTypes(companyId);
+  }
+
+  @Post('ledger-types')
+  @ApiCreatedResponse({ description: 'Create ledger type master.' })
+  createLedgerType(@Query('companyId') companyId: string | undefined, @Body() dto: CreateLedgerTypeMasterDto) {
+    return this.accountingService.createLedgerType(companyId, dto);
+  }
+
+  @Patch('ledger-types/:id')
+  @ApiOkResponse({ description: 'Update ledger type master.' })
+  updateLedgerType(@Param('id') id: string, @Body() dto: UpdateLedgerTypeMasterDto) {
+    return this.accountingService.updateLedgerType(id, dto);
   }
 
   @Get('voucher-types')

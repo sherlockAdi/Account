@@ -40,7 +40,7 @@ for source in (BACKEND_ENV, LOCAL_ENV):
 DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '').strip()
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini').strip()
-BACKEND_API_URL = os.getenv('BACKEND_API_URL', 'http://localhost:8001/api/v1').strip().rstrip('/')
+BACKEND_API_URL = os.getenv('BACKEND_API_URL', 'http://localhost:3000/api/v1').strip().rstrip('/')
 PORT = int(os.getenv('NLP_PORT', '8003'))
 
 
@@ -177,6 +177,58 @@ def parse_date_filter(value: str | None, end_of_day: bool = False):
   if end_of_day:
     return dt.replace(hour=23, minute=59, second=59, microsecond=999000)
   return dt
+
+
+def parse_prompt_date(value: str | None):
+  if not value:
+    return None
+  text = re.sub(r'(\d)(st|nd|rd|th)\b', r'\1', str(value).strip().replace(',', ''))
+  for fmt in (
+    '%Y-%m-%d',
+    '%d/%m/%Y',
+    '%d-%m-%Y',
+    '%d %b %Y',
+    '%d %B %Y',
+    '%d/%m/%y',
+    '%d-%m-%y',
+  ):
+    try:
+      return datetime.strptime(text, fmt).date().isoformat()
+    except ValueError:
+      continue
+  return None
+
+
+def extract_date_range(prompt: str = '') -> tuple[str | None, str | None]:
+  text = str(prompt).strip()
+  if not text:
+    return None, None
+
+  date_pattern = r'(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})'
+  range_patterns = [
+    rf'\bfrom\s+(?P<from>{date_pattern})\s+(?:to|till|until|upto|up to|-)\s+(?P<to>{date_pattern})\b',
+    rf'\bbetween\s+(?P<from>{date_pattern})\s+(?:and|to|-)\s+(?P<to>{date_pattern})\b',
+    rf'\bfor\s+(?:the\s+)?period\s+(?P<from>{date_pattern})\s+(?:to|till|until|-)\s+(?P<to>{date_pattern})\b',
+  ]
+  for pattern in range_patterns:
+    match = re.search(pattern, text, flags=re.IGNORECASE)
+    if match:
+      start = parse_prompt_date(match.group('from'))
+      end = parse_prompt_date(match.group('to'))
+      if start or end:
+        return start, end
+
+  until_patterns = [
+    rf'\b(?:as of|till|until|upto|up to)\s+(?P<to>{date_pattern})\b',
+  ]
+  for pattern in until_patterns:
+    match = re.search(pattern, text, flags=re.IGNORECASE)
+    if match:
+      end = parse_prompt_date(match.group('to'))
+      if end:
+        return None, end
+
+  return None, None
 
 
 def extract_company_name(prompt: str = '') -> str:
@@ -838,28 +890,31 @@ def run_report(prompt: str, company_name: str = '', from_value: str | None = Non
   parsed = parse_prompt(prompt, company_name)
   company = resolve_company(prompt, parsed['company_name'] or company_name)
   report = next((item for item in REPORTS if item['key'] == parsed['report_key']), pick_report(prompt))
+  prompt_from, prompt_to = extract_date_range(prompt)
+  resolved_from = from_value or prompt_from
+  resolved_to = to_value or prompt_to
   if report['key'] == 'voucher-detail':
     payload = {
       'kind': 'voucher-list',
-      'rows': voucher_detail(company['id'], from_value, to_value),
+      'rows': voucher_detail(company['id'], resolved_from, resolved_to),
     }
     source = 'python-db'
   elif report['key'] == 'trial-balance':
     payload = {
       'kind': 'table',
-      'rows': trial_balance(company['id'], from_value, to_value),
+      'rows': trial_balance(company['id'], resolved_from, resolved_to),
     }
     source = 'python-db'
   elif report['key'] == 'profit-loss':
     payload = {
       'kind': 'statement',
-      'sections': profit_loss(company['id'], from_value, to_value),
+      'sections': profit_loss(company['id'], resolved_from, resolved_to),
     }
     source = 'python-db'
   elif report['key'] == 'balance-sheet':
     payload = {
       'kind': 'statement',
-      'sections': balance_sheet(company['id'], to_value),
+      'sections': balance_sheet(company['id'], resolved_to),
     }
     source = 'python-db'
   elif report['key'] == 'stock-summary':
@@ -881,7 +936,7 @@ def run_report(prompt: str, company_name: str = '', from_value: str | None = Non
     }
     source = 'python-db'
   else:
-    backend_data = proxy_backend(report, company['id'], from_value, to_value)
+    backend_data = proxy_backend(report, company['id'], resolved_from, resolved_to)
     payload = {
       'kind': 'json',
       'data': backend_data,
@@ -904,7 +959,7 @@ def run_report(prompt: str, company_name: str = '', from_value: str | None = Non
       'code': company['code'],
       'gstin': company.get('gstin'),
     },
-    'period': {'from': from_value, 'to': to_value},
+    'period': {'from': resolved_from, 'to': resolved_to},
     **payload,
   }
 

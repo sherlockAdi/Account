@@ -1,0 +1,1 @@
+C:/Users/Dell/Documents/Amarnath/node_modules/@embedded-postgres/windows-x64/native/bin/postgres.exe "-D" "D:/Aditya Kumar Dwivedi/Account/.pgdata" "-p" "5432" "-h" "127.0.0.1"

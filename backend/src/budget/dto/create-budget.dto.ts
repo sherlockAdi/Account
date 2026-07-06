@@ -25,6 +25,11 @@ export class BudgetLineDto {
 }
 
 export class CreateBudgetDto {
+  @ApiPropertyOptional({ example: 'budget-type-id' })
+  @IsOptional()
+  @IsString()
+  budgetTypeId?: string;
+
   @ApiProperty()
   @IsString()
   @MinLength(2)
@@ -38,6 +43,17 @@ export class CreateBudgetDto {
   @ApiProperty()
   @IsString()
   fiscalYear: string;
+
+  @ApiPropertyOptional({ example: 'cost-center-id' })
+  @IsOptional()
+  @IsString()
+  costCenterId?: string;
+
+  @ApiPropertyOptional({ example: 100000 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  totalAmount?: number;
 
   @ApiProperty()
   @IsDateString()
@@ -57,9 +73,10 @@ export class CreateBudgetDto {
   @IsString()
   notes?: string;
 
-  @ApiProperty({ type: [BudgetLineDto] })
+  @ApiPropertyOptional({ type: [BudgetLineDto] })
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => BudgetLineDto)
-  lines: BudgetLineDto[];
+  lines?: BudgetLineDto[];
 }

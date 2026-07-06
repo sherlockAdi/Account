@@ -7,10 +7,12 @@ import { CreateAccountGroupDto } from './dto/create-account-group.dto';
 import { CreateBudgetGrantDto } from './dto/create-budget-grant.dto';
 import { CreateBudgetTypeDto } from './dto/create-budget-type.dto';
 import { CreateLedgerDto } from './dto/create-ledger.dto';
+import { CreateLedgerTypeMasterDto } from './dto/create-ledger-type-master.dto';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { CreateVoucherTypeDto } from './dto/create-voucher-type.dto';
 import { UpdateAccountGroupDto } from './dto/update-account-group.dto';
 import { UpdateLedgerDto } from './dto/update-ledger.dto';
+import { UpdateLedgerTypeMasterDto } from './dto/update-ledger-type-master.dto';
 import { UpdateVoucherBudgetDto } from './dto/update-voucher-budget.dto';
 import { UpdateVoucherTypeDto } from './dto/update-voucher-type.dto';
 
@@ -49,6 +51,15 @@ export class AccountingService {
     });
   }
 
+  async listLedgerTypes(companyId?: string) {
+    const company = await this.resolveCompany(companyId);
+    await this.ensureDefaultLedgerTypes(company.id);
+    return this.prisma.ledgerTypeMaster.findMany({
+      where: { companyId: company.id, deletedAt: null },
+      orderBy: [{ isSystem: 'desc' }, { code: 'asc' }],
+    });
+  }
+
   async listVoucherTypes(companyId?: string) {
     const company = await this.resolveCompany(companyId);
     return this.prisma.voucherType.findMany({
@@ -64,6 +75,7 @@ export class AccountingService {
     const budgets = await this.prisma.budgetType.findMany({
       where: { companyId: company.id, deletedAt: null },
       include: {
+        costCenter: true,
         grants: {
           where: { deletedAt: null },
           orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
@@ -118,6 +130,7 @@ export class AccountingService {
     const budget = await this.prisma.budgetType.create({
       data: {
         companyId: company.id,
+        costCenterId: dto.costCenterId || null,
         name: dto.name,
         code: dto.code,
         category: dto.category ?? 'ANNUAL',
@@ -158,6 +171,7 @@ export class AccountingService {
     return this.prisma.budgetType.findFirstOrThrow({
       where: { id: budget.id },
       include: {
+        costCenter: true,
         grants: {
           where: { deletedAt: null },
           orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
@@ -210,6 +224,31 @@ export class AccountingService {
   async updateVoucherType(id: string, dto: UpdateVoucherTypeDto) {
     await this.findVoucherType(id);
     return this.prisma.voucherType.update({ where: { id }, data: dto });
+  }
+
+  async createLedgerType(companyId: string | undefined, dto: CreateLedgerTypeMasterDto) {
+    const company = await this.resolveCompany(companyId);
+    return this.prisma.ledgerTypeMaster.create({
+      data: {
+        companyId: company.id,
+        name: dto.name,
+        code: dto.code.toUpperCase(),
+        notes: dto.notes,
+        isActive: dto.isActive ?? true,
+        isSystem: false,
+      },
+    });
+  }
+
+  async updateLedgerType(id: string, dto: UpdateLedgerTypeMasterDto) {
+    await this.findLedgerType(id);
+    return this.prisma.ledgerTypeMaster.update({
+      where: { id },
+      data: {
+        ...dto,
+        code: dto.code === undefined ? undefined : dto.code.toUpperCase(),
+      },
+    });
   }
 
   async createLedger(companyId: string | undefined, dto: CreateLedgerDto) {
@@ -462,6 +501,32 @@ export class AccountingService {
         isActive: true,
       },
     });
+  }
+
+  private async ensureDefaultLedgerTypes(companyId: string) {
+    for (const type of [
+      { name: 'General', code: 'GENERAL' },
+      { name: 'Cash', code: 'CASH' },
+      { name: 'Bank', code: 'BANK' },
+      { name: 'Capital', code: 'CAPITAL' },
+      { name: 'Customer', code: 'CUSTOMER' },
+      { name: 'Vendor', code: 'VENDOR' },
+      { name: 'Tax', code: 'TAX' },
+      { name: 'Expense', code: 'EXPENSE' },
+      { name: 'Income', code: 'INCOME' },
+    ] as const) {
+      await this.prisma.ledgerTypeMaster.upsert({
+        where: { companyId_code: { companyId, code: type.code } },
+        update: { name: type.name, isSystem: true },
+        create: { companyId, ...type, isSystem: true },
+      });
+    }
+  }
+
+  private async findLedgerType(id: string) {
+    const ledgerType = await this.prisma.ledgerTypeMaster.findFirst({ where: { id, deletedAt: null } });
+    if (!ledgerType) throw new NotFoundException('Ledger type not found');
+    return ledgerType;
   }
 
   private async resolveBudgetSelection(companyId: string, dto: { budgetTypeId?: string | null; budgetGrantId?: string | null; budgetFlow?: BudgetFlow | null }) {

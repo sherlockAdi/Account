@@ -1,0 +1,33 @@
+[2m6:04:38 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `gst`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[2m6:04:41 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReact does not recognize the `inputProps` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `inputprops` instead. If you accidentally passed it from a parent component, remove it from the DOM element.
+[2m6:04:46 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `gst`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[2m6:04:54 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `gst`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[2m6:04:55 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReact does not recognize the `InputLabelProps` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `inputlabelprops` instead. If you accidentally passed it from a parent component, remove it from the DOM element.
+[2m6:05:14 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReact does not recognize the `flexWrap` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `flexwrap` instead. If you accidentally passed it from a parent component, remove it from the DOM element.
+[2m6:05:14 pm[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReact does not recognize the `justifyContent` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `justifycontent` instead. If you accidentally passed it from a parent component, remove it from the DOM element.
+[2m6:05:14 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.
+[2m6:05:14 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.
+[2m6:05:14 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.
+[2m6:05:14 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.
+[2m6:05:14 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.
+[2m6:05:14 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.
+[2m6:05:14 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.
+[2m6:05:14 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.
+[2m6:05:14 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.
+[2m6:05:15 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.
+[2m6:05:15 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.
+[2m6:05:15 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.
+[2m6:05:15 pm[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mMUI X: The page size `5` is not present in the `pageSizeOptions`.
+Add it to show the pagination select.

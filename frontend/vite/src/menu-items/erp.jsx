@@ -43,13 +43,6 @@ const erp = {
   type: 'group',
   children: [
     {
-      id: 'saas',
-      title: 'SaaS Admin',
-      type: 'item',
-      url: '/saas',
-      icon: icons.ApartmentOutlined
-    },
-    {
       id: 'companies',
       title: 'Companies & Branches',
       type: 'item',
@@ -57,11 +50,25 @@ const erp = {
       icon: icons.ShopOutlined
     },
     {
-      id: 'users',
-      title: 'Users & Roles',
+      id: 'cost-center',
+      title: 'Cost Centre',
       type: 'item',
-      url: '/users',
-      icon: icons.TeamOutlined
+      url: '/cost-center',
+      icon: icons.ApartmentOutlined
+    },
+    {
+      id: 'budget',
+      title: 'Budget',
+      type: 'item',
+      url: '/budget',
+      icon: icons.CalculatorOutlined
+    },
+    {
+      id: 'grand',
+      title: 'Grant',
+      type: 'item',
+      url: '/grand',
+      icon: icons.FileProtectOutlined
     },
     {
       id: 'accounting',
@@ -106,6 +113,41 @@ const erp = {
       icon: icons.BuildOutlined
     },
     {
+      id: 'reports',
+      title: 'Reports & MIS',
+      type: 'item',
+      url: '/reports',
+      icon: icons.PieChartOutlined
+    },
+    {
+      id: 'smart-reports',
+      title: 'Smart Reports',
+      type: 'item',
+      url: '/smart-reports',
+      icon: icons.PieChartOutlined
+    },
+    {
+      id: 'saas',
+      title: 'SaaS Admin',
+      type: 'item',
+      url: '/saas',
+      icon: icons.ApartmentOutlined
+    },
+    {
+      id: 'users',
+      title: 'Users & Roles',
+      type: 'item',
+      url: '/users',
+      icon: icons.TeamOutlined
+    },
+    {
+      id: 'gst',
+      title: 'GST & Tax',
+      type: 'item',
+      url: '/gst',
+      icon: icons.FileProtectOutlined
+    },
+    {
       id: 'payroll',
       title: 'Payroll',
       type: 'item',
@@ -118,27 +160,6 @@ const erp = {
       type: 'item',
       url: '/banking',
       icon: icons.BankOutlined
-    },
-    {
-      id: 'reports',
-      title: 'Reports & MIS',
-      type: 'item',
-      url: '/reports',
-      icon: icons.PieChartOutlined
-    },
-    {
-      id: 'budget',
-      title: 'Budget',
-      type: 'item',
-      url: '/budget',
-      icon: icons.CalculatorOutlined
-    },
-    {
-      id: 'grand',
-      title: 'Grant',
-      type: 'item',
-      url: '/grand',
-      icon: icons.FileProtectOutlined
     },
     {
       id: 'utilization',

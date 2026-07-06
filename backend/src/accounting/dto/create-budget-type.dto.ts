@@ -46,6 +46,11 @@ export class CreateBudgetTypeDto {
   @IsString()
   category?: string;
 
+  @ApiPropertyOptional({ example: 'cost-center-id' })
+  @IsOptional()
+  @IsString()
+  costCenterId?: string;
+
   @ApiPropertyOptional({ example: 1000 })
   @IsOptional()
   @IsNumber()

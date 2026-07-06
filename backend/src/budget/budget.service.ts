@@ -56,26 +56,39 @@ export class BudgetService {
 
   async createBudget(companyId: string | undefined, dto: CreateBudgetDto) {
     const company = await this.resolveCompany(companyId);
-    if (!dto.lines.length) throw new BadRequestException('Add at least one budget line');
-
     const periodFrom = new Date(dto.periodFrom);
     const periodTo = new Date(`${dto.periodTo}T23:59:59.999Z`);
     if (periodFrom > periodTo) throw new BadRequestException('Budget period start must be before period end');
 
-    const ledgerIds = [...new Set(dto.lines.map((line) => line.ledgerId))];
-    const ledgers = await this.prisma.ledger.findMany({ where: { id: { in: ledgerIds }, companyId: company.id, deletedAt: null } });
-    if (ledgers.length !== ledgerIds.length) throw new BadRequestException('One or more ledgers are invalid for this company');
-
-    const branchIds = [...new Set(dto.lines.map((line) => line.branchId).filter(Boolean))] as string[];
-    if (branchIds.length) {
-      const branches = await this.prisma.branch.findMany({ where: { id: { in: branchIds }, companyId: company.id, deletedAt: null } });
-      if (branches.length !== branchIds.length) throw new BadRequestException('One or more branches are invalid for this company');
+    if (dto.budgetTypeId) {
+      const budgetType = await this.prisma.budgetType.findFirst({ where: { id: dto.budgetTypeId, companyId: company.id, deletedAt: null } });
+      if (!budgetType) throw new BadRequestException('Budget type is invalid for this company');
     }
 
-    const totalAmount = dto.lines.reduce((sum, line) => sum + Number(line.allocatedAmount), 0);
+    if (dto.costCenterId) {
+      const costCenter = await this.prisma.costCenter.findFirst({ where: { id: dto.costCenterId, companyId: company.id, deletedAt: null } });
+      if (!costCenter) throw new BadRequestException('Cost centre is invalid for this company');
+    }
+
+    const lines = dto.lines ?? [];
+    if (lines.length) {
+      const ledgerIds = [...new Set(lines.map((line) => line.ledgerId))];
+      const ledgers = await this.prisma.ledger.findMany({ where: { id: { in: ledgerIds }, companyId: company.id, deletedAt: null } });
+      if (ledgers.length !== ledgerIds.length) throw new BadRequestException('One or more ledgers are invalid for this company');
+
+      const branchIds = [...new Set(lines.map((line) => line.branchId).filter(Boolean))] as string[];
+      if (branchIds.length) {
+        const branches = await this.prisma.branch.findMany({ where: { id: { in: branchIds }, companyId: company.id, deletedAt: null } });
+        if (branches.length !== branchIds.length) throw new BadRequestException('One or more branches are invalid for this company');
+      }
+    }
+
+    const totalAmount = dto.totalAmount !== undefined ? Number(dto.totalAmount) : lines.reduce((sum, line) => sum + Number(line.allocatedAmount), 0);
     const budget = await this.prisma.budgetPlan.create({
       data: {
         companyId: company.id,
+        budgetTypeId: dto.budgetTypeId || null,
+        costCenterId: dto.costCenterId || null,
         name: dto.name,
         code: dto.code.toUpperCase(),
         fiscalYear: dto.fiscalYear,
@@ -84,14 +97,18 @@ export class BudgetService {
         status: dto.status ?? BudgetStatus.DRAFT,
         totalAmount,
         notes: dto.notes,
-        lines: {
-          create: dto.lines.map((line) => ({
-            ledgerId: line.ledgerId,
-            branchId: line.branchId || undefined,
-            allocatedAmount: Number(line.allocatedAmount),
-            notes: line.notes,
-          })),
-        },
+        ...(lines.length
+          ? {
+              lines: {
+                create: lines.map((line) => ({
+                  ledgerId: line.ledgerId,
+                  branchId: line.branchId || undefined,
+                  allocatedAmount: Number(line.allocatedAmount),
+                  notes: line.notes,
+                })),
+              },
+            }
+          : {}),
       },
       include: this.budgetInclude(),
     });
@@ -171,6 +188,8 @@ export class BudgetService {
   private budgetInclude() {
     return {
       company: true,
+      budgetType: true,
+      costCenter: true,
       lines: {
         include: { ledger: { include: { group: true } }, branch: true },
         orderBy: [{ ledger: { name: 'asc' } }],

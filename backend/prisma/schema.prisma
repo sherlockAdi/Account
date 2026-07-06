@@ -253,6 +253,8 @@ model Company {
   booksStartDate        DateTime
   isActive              Boolean                @default(true)
   branches              Branch[]
+  costCenters           CostCenter[]
+  ledgerTypeMasters     LedgerTypeMaster[]
   accountGroups         AccountGroup[]
   ledgers               Ledger[]
   vouchers              Voucher[]
@@ -299,6 +301,9 @@ model BudgetType {
   id           String         @id @default(uuid())
   companyId    String
   company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  budgets      BudgetPlan[]
+  costCenterId String?
+  costCenter   CostCenter?    @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
   name         String
   code         String
   category     String         @default("ANNUAL")
@@ -313,6 +318,7 @@ model BudgetType {
 
   @@unique([companyId, code])
   @@index([companyId, isAnnual])
+  @@index([costCenterId])
   @@map("budget_types")
 }
 
@@ -407,6 +413,43 @@ model Branch {
   @@unique([companyId, code])
   @@index([companyId, isActive])
   @@map("branches")
+}
+
+model CostCenter {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  budgetTypes BudgetType[]
+  budgets   BudgetPlan[]
+  name      String
+  code      String
+  notes     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@unique([companyId, code])
+  @@index([companyId, isActive])
+  @@map("cost_centers")
+}
+
+model LedgerTypeMaster {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  code      String
+  notes     String?
+  isSystem  Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@unique([companyId, code])
+  @@index([companyId, isActive])
+  @@map("ledger_type_masters")
 }
 
 model AccountGroup {
@@ -521,6 +564,10 @@ model BudgetPlan {
   id          String       @id @default(uuid())
   companyId   String
   company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  budgetTypeId String?
+  budgetType   BudgetType? @relation(fields: [budgetTypeId], references: [id], onDelete: SetNull)
+  costCenterId String?
+  costCenter   CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
   name        String
   code        String
   fiscalYear  String
@@ -536,6 +583,8 @@ model BudgetPlan {
 
   @@unique([companyId, code])
   @@index([companyId, status, periodFrom, periodTo])
+  @@index([budgetTypeId])
+  @@index([costCenterId])
   @@map("budget_plans")
 }
 

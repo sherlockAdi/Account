@@ -70,7 +70,7 @@ export default function CommonDataGrid({
   const [selectValues, setSelectValues] = useState(() => Object.fromEntries(selectFilters.map((filter) => [filter.field, ''])));
 
   const gridRows = useMemo(
-    () => rows.map((row, index) => ({ ...row, id: getRowId ? getRowId(row) : row.id || row.ledgerId || `${fileName}-${index}` })),
+    () => rows.map((row, index) => ({ ...row, id: getRowId ? getRowId(row, index) : row.id || row.ledgerId || `${fileName}-${index}` })),
     [fileName, getRowId, rows]
   );
 
@@ -261,6 +261,7 @@ export default function CommonDataGrid({
           pageSizeOptions={[25, 50, 100]}
           initialState={{ pagination: { paginationModel: { pageSize } } }}
           disableRowSelectionOnClick
+          disableColumnReorder={false}
           density="compact"
           onRowClick={onRowClick}
           sx={{
