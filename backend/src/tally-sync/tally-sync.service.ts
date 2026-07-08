@@ -223,8 +223,34 @@ export class TallySyncService implements OnModuleInit, OnModuleDestroy {
 
   async exportAllToTally() {
     return this.runBatch('EXPORT_ALL', async (tenantId, companyId, setting) => {
-      return this.pushLocalChanges(tenantId, companyId, setting, true, true);
+      // Export must be idempotent. Forcing Create here makes the same voucher
+      // reappear in Tally after every BOTH-direction sync.
+      return this.pushLocalChanges(tenantId, companyId, setting, true, false);
     });
+  }
+
+  async exportVoucherToTally(voucherId: string, companyId?: string) {
+    const tenant = await this.identityService.ensureDefaults();
+    const setting = await this.ensureSetting(tenant.id);
+    if (!setting.enabled) {
+      return { state: TallySyncState.IDLE, message: 'Tally sync is disabled' };
+    }
+
+    const company = await this.resolveCompany(companyId ?? setting.companyId, tenant.id);
+    if (!company) {
+      throw new BadRequestException('Create a company before syncing vouchers to Tally');
+    }
+
+    const voucher = await this.prisma.voucher.findFirst({
+      where: { id: voucherId, companyId: company.id, deletedAt: null },
+      include: { lines: { include: { ledger: true } }, budgetType: true, budgetGrant: true, branch: true },
+    });
+    if (!voucher) {
+      throw new BadRequestException('Voucher not found for Tally export');
+    }
+
+    const result = await this.pushVoucher(tenant.id, company.id, setting, voucher, true);
+    return { state: TallySyncState.SUCCESS, result };
   }
 
   private async ensureSetting(tenantId?: string) {
@@ -299,7 +325,7 @@ export class TallySyncService implements OnModuleInit, OnModuleDestroy {
         void this.syncNow().catch((error) => {
           this.logger.error(`Auto sync failed: ${error instanceof Error ? error.message : String(error)}`);
         });
-      }, Math.max(setting.syncIntervalSeconds, 300) * 1000);
+      }, Math.max(setting.syncIntervalSeconds, 30) * 1000);
     })().catch((error) => {
       this.logger.error(`Unable to schedule Tally auto sync: ${error instanceof Error ? error.message : String(error)}`);
     });
@@ -471,6 +497,9 @@ export class TallySyncService implements OnModuleInit, OnModuleDestroy {
     group: { id: string; name: string; code: string; nature: AccountNature; parent?: { name: string | null } | null; updatedAt: Date },
     forceCreate = false,
   ): Promise<SyncResultItem> {
+    if (!forceCreate && (await this.shouldSkipLocalPush(tenantId, 'ACCOUNT_GROUP', group.id, group.updatedAt))) {
+      return { entityType: 'ACCOUNT_GROUP', localId: group.id, action: 'PUSH', status: 'SKIPPED', message: 'No local changes since last sync' };
+    }
     const action = forceCreate ? 'Create' : await this.resolveImportAction(tenantId, 'ACCOUNT_GROUP', group.id);
     const parentName = group.parent?.name ?? this.getPrimaryGroupName(group.nature);
     const remoteId = `GROUP-${group.code}`;
@@ -515,6 +544,9 @@ export class TallySyncService implements OnModuleInit, OnModuleDestroy {
     ledger: { id: string; name: string; code: string; ledgerType: string; group: { name: string }; updatedAt: Date },
     forceCreate = false,
   ): Promise<SyncResultItem> {
+    if (!forceCreate && (await this.shouldSkipLocalPush(tenantId, 'LEDGER', ledger.id, ledger.updatedAt))) {
+      return { entityType: 'LEDGER', localId: ledger.id, action: 'PUSH', status: 'SKIPPED', message: 'No local changes since last sync' };
+    }
     const action = forceCreate ? 'Create' : await this.resolveImportAction(tenantId, 'LEDGER', ledger.id);
     const remoteId = `LEDGER-${ledger.code}`;
     const payload = {
@@ -555,6 +587,9 @@ export class TallySyncService implements OnModuleInit, OnModuleDestroy {
     costCenter: { id: string; name: string; code: string; updatedAt: Date },
     forceCreate = false,
   ): Promise<SyncResultItem> {
+    if (!forceCreate && (await this.shouldSkipLocalPush(tenantId, 'COST_CENTER', costCenter.id, costCenter.updatedAt))) {
+      return { entityType: 'COST_CENTER', localId: costCenter.id, action: 'PUSH', status: 'SKIPPED', message: 'No local changes since last sync' };
+    }
     const action = forceCreate ? 'Create' : await this.resolveImportAction(tenantId, 'COST_CENTER', costCenter.id);
     const remoteId = `COSTCENTER-${costCenter.code}`;
     const payload = {
@@ -591,6 +626,9 @@ export class TallySyncService implements OnModuleInit, OnModuleDestroy {
     voucherType: { id: string; name: string; code: string; category: string; prefix: string; nextNumber: number; padding: number; suffix: string | null; updatedAt: Date },
     forceCreate = false,
   ): Promise<SyncResultItem> {
+    if (!forceCreate && (await this.shouldSkipLocalPush(tenantId, 'VOUCHER_TYPE', voucherType.id, voucherType.updatedAt))) {
+      return { entityType: 'VOUCHER_TYPE', localId: voucherType.id, action: 'PUSH', status: 'SKIPPED', message: 'No local changes since last sync' };
+    }
     const action = forceCreate ? 'Create' : await this.resolveImportAction(tenantId, 'VOUCHER_TYPE', voucherType.id);
     const remoteId = `VOUCHERTYPE-${voucherType.code}`;
     const payload = {
@@ -642,6 +680,9 @@ export class TallySyncService implements OnModuleInit, OnModuleDestroy {
     },
     forceCreate = false,
   ): Promise<SyncResultItem> {
+    if (!forceCreate && (await this.shouldSkipLocalPush(tenantId, 'VOUCHER', voucher.id, voucher.updatedAt))) {
+      return { entityType: 'VOUCHER', localId: voucher.id, action: 'PUSH', status: 'SKIPPED', message: 'No local changes since last sync' };
+    }
     const action = forceCreate ? 'Create' : await this.resolveImportAction(tenantId, 'VOUCHER', voucher.id);
     const remoteId = `VOUCHER-${voucher.voucherType}-${voucher.voucherNo}`;
     const payload = {
@@ -1211,6 +1252,22 @@ ${ledgerEntries}
       where: { tenantId_entityType_localId: { tenantId, entityType, localId } },
     });
     return mapping?.remoteId ? 'Alter' : 'Create';
+  }
+
+  private async shouldSkipLocalPush(
+    tenantId: string,
+    entityType: SyncEntityType | 'VOUCHER_TYPE',
+    localId: string,
+    localUpdatedAt: Date,
+  ) {
+    const mapping = await this.prisma.tallySyncMapping.findUnique({
+      where: { tenantId_entityType_localId: { tenantId, entityType, localId } },
+      select: { lastSyncedAt: true, localUpdatedAt: true, remoteUpdatedAt: true },
+    });
+    if (!mapping) return false;
+    const lastSyncMarker = mapping.lastSyncedAt || mapping.localUpdatedAt || mapping.remoteUpdatedAt;
+    if (!lastSyncMarker) return false;
+    return localUpdatedAt <= lastSyncMarker;
   }
 
   private getPrimaryGroupName(nature: AccountNature) {

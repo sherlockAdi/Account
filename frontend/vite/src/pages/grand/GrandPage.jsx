@@ -123,8 +123,7 @@ export default function GrandPage() {
   function openGrantDialog() {
     setCategoryOpen(false);
     setGrantForm({
-      ...emptyGrantForm,
-      budgetTypeId: categories[0]?.id || ''
+      ...emptyGrantForm
     });
     setGrantOpen(true);
   }
@@ -156,6 +155,7 @@ export default function GrandPage() {
 
   async function saveGrant() {
     const payload = {
+      budgetTypeId: grantForm.budgetTypeId || undefined,
       name: grantForm.name.trim(),
       code: grantForm.code.trim().toUpperCase(),
       amount: Number(grantForm.amount),
@@ -163,7 +163,7 @@ export default function GrandPage() {
       isActive: grantForm.isActive
     };
     await run(
-      () => api(`/accounting/budgets/${grantForm.budgetTypeId}/grants`, { method: 'POST', body: JSON.stringify(payload) }),
+      () => api('/accounting/grants', { method: 'POST', body: JSON.stringify(payload) }),
       'Grant created',
       () => setGrantOpen(false)
     );
@@ -300,7 +300,8 @@ export default function GrandPage() {
           <DialogTitle>Create Grant</DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField select label="Category" value={grantForm.budgetTypeId} onChange={(event) => setGrantForm({ ...grantForm, budgetTypeId: event.target.value })} required>
+              <TextField select label="Budget Mapping (Optional)" value={grantForm.budgetTypeId} onChange={(event) => setGrantForm({ ...grantForm, budgetTypeId: event.target.value })}>
+                <MenuItem value="">Optional</MenuItem>
                 {categories.map((category) => (
                   <MenuItem key={category.id} value={category.id}>
                     {category.name}

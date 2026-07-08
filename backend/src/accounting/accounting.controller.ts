@@ -110,6 +110,12 @@ export class AccountingController {
     return this.accountingService.createBudgetGrant(companyId, budgetTypeId, dto);
   }
 
+  @Post('grants')
+  @ApiCreatedResponse({ description: 'Create budget grant with optional budget mapping.' })
+  createGrant(@Query('companyId') companyId: string | undefined, @Body() dto: CreateBudgetGrantDto) {
+    return this.accountingService.createBudgetGrantOptional(companyId, dto);
+  }
+
   @Get('vouchers')
   @ApiOkResponse({ description: 'List vouchers/day book.' })
   listVouchers(@Query() query: AccountingQueryDto) {

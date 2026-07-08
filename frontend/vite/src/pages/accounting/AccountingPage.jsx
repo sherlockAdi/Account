@@ -210,6 +210,24 @@ export default function AccountingPage() {
     };
   }
 
+  function buildFreshVoucherForm() {
+    const annualBudget = budgets.find((budget) => budget.isAnnual) || budgets[0] || null;
+    const defaultGrant = annualBudget?.grants?.find((grant) => grant.isDefault) || annualBudget?.grants?.[0] || null;
+    const firstVoucherType = voucherTypes[0] || null;
+    return {
+      voucherTypeId: firstVoucherType?.id || '',
+      voucherNo: '',
+      voucherDate: todayIso(),
+      budgetTypeId: budgetVoucherEnabled ? (annualBudget?.id || '') : '',
+      budgetGrantId: budgetVoucherEnabled ? (defaultGrant?.id || '') : '',
+      narration: '',
+      lines: [
+        { ledgerId: '', type: 'DEBIT', amount: 0, narration: '' },
+        { ledgerId: '', type: 'CREDIT', amount: 0, narration: '' }
+      ]
+    };
+  }
+
   async function ensureGroups(force = false) {
     if (!force && groupsLoaded && groups.length) return groups;
     const groupData = await api('/accounting/groups');
@@ -907,13 +925,7 @@ export default function AccountingPage() {
 
           {tab === 4 && (
             <GridPanel label="Create Voucher" onCreate={() => {
-              const annualBudget = budgets.find((budget) => budget.isAnnual) || budgets[0] || null;
-              const defaultGrant = annualBudget?.grants?.find((grant) => grant.isDefault) || annualBudget?.grants?.[0] || null;
-              setVoucherForm((current) => ({
-                ...current,
-                budgetTypeId: annualBudget?.id || '',
-                budgetGrantId: defaultGrant?.id || ''
-              }));
+              setVoucherForm(buildFreshVoucherForm());
               setVoucherOpen(true);
             }}>
               <Stack spacing={1.5}>
@@ -1021,7 +1033,7 @@ export default function AccountingPage() {
       </Dialog>
 
       <Dialog open={voucherOpen} onClose={() => setVoucherOpen(false)} fullWidth maxWidth="md">
-        <Box component="form" onSubmit={(event) => { event.preventDefault(); save(() => api('/accounting/vouchers', { method: 'POST', body: JSON.stringify({ ...voucherForm, lines: voucherForm.lines.map((line) => ({ ...line, amount: Number(line.amount) })) }) }), 'Voucher posted', () => setVoucherOpen(false)); }}>
+        <Box component="form" onSubmit={(event) => { event.preventDefault(); save(() => api('/accounting/vouchers', { method: 'POST', body: JSON.stringify({ ...voucherForm, lines: voucherForm.lines.map((line) => ({ ...line, amount: Number(line.amount) })) }) }), 'Voucher posted', () => { setVoucherOpen(false); setVoucherForm(buildFreshVoucherForm()); }); }}>
           <DialogTitle>Create Voucher</DialogTitle>
           <DialogContent><Stack spacing={2} sx={{ mt: 1 }}><Grid container spacing={2}><Grid size={{ xs: 12, md: 4 }}><TextField select fullWidth label="Voucher Type" value={voucherForm.voucherTypeId} onChange={(event) => setVoucherForm({ ...voucherForm, voucherTypeId: event.target.value })}>{voucherTypes.map((type) => <MenuItem key={type.id} value={type.id}>{type.name} ({type.prefix}{String(type.nextNumber).padStart(type.padding, '0')}{type.suffix || ''})</MenuItem>)}</TextField></Grid><Grid size={{ xs: 12, md: 4 }}><TextField fullWidth label="Voucher No (optional)" value={voucherForm.voucherNo} onChange={(event) => setVoucherForm({ ...voucherForm, voucherNo: event.target.value })} helperText="Leave blank for auto number" /></Grid><Grid size={{ xs: 12, md: 4 }}><DateField fullWidth label="Date" value={voucherForm.voucherDate} onChange={(event) => setVoucherForm({ ...voucherForm, voucherDate: event.target.value })} /></Grid></Grid>
             {budgetVoucherEnabled && (

@@ -7,5 +7,6 @@ import { TallySyncService } from './tally-sync.service';
   imports: [IdentityModule],
   controllers: [TallySyncController],
   providers: [TallySyncService],
+  exports: [TallySyncService],
 })
 export class TallySyncModule {}

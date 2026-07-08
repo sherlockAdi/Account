@@ -2,9 +2,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsNumber, IsOptional, IsString, Min, MinLength } from 'class-validator';
 
 export class CreateBudgetGrantDto {
-  @ApiProperty()
+  @ApiPropertyOptional({ example: 'budget-type-id' })
+  @IsOptional()
   @IsString()
-  budgetTypeId: string;
+  budgetTypeId?: string;
 
   @ApiProperty({ example: 'Grant A' })
   @IsString()

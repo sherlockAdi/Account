@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { BudgetFlow, DebitCredit, Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { IdentityService } from '../identity/identity.service';
+import { TallySyncService } from '../tally-sync/tally-sync.service';
 import { AccountingQueryDto } from './dto/accounting-query.dto';
 import { CreateAccountGroupDto } from './dto/create-account-group.dto';
 import { CreateBudgetGrantDto } from './dto/create-budget-grant.dto';
@@ -21,6 +22,7 @@ export class AccountingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly identityService: IdentityService,
+    private readonly tallySyncService: TallySyncService,
   ) {}
 
   async listGroups(companyId?: string) {
@@ -181,8 +183,16 @@ export class AccountingService {
   }
 
   async createBudgetGrant(companyId: string | undefined, budgetTypeId: string, dto: CreateBudgetGrantDto) {
+    return this.createBudgetGrantRecord(companyId, budgetTypeId, dto);
+  }
+
+  async createBudgetGrantOptional(companyId: string | undefined, dto: CreateBudgetGrantDto) {
+    return this.createBudgetGrantRecord(companyId, dto.budgetTypeId, dto);
+  }
+
+  private async createBudgetGrantRecord(companyId: string | undefined, budgetTypeId: string | undefined, dto: CreateBudgetGrantDto) {
     const company = await this.resolveCompany(companyId);
-    const budget = await this.findBudgetType(budgetTypeId, company.id);
+    const budget = budgetTypeId ? await this.findBudgetType(budgetTypeId, company.id) : await this.ensureDefaultBudget(company.id);
     const grant = await this.prisma.budgetGrant.create({
       data: {
         companyId: company.id,
@@ -311,7 +321,6 @@ export class AccountingService {
 
   async createVoucher(companyId: string | undefined, dto: CreateVoucherDto) {
     const company = await this.resolveCompany(companyId);
-    const voucherIdentity = await this.resolveVoucherIdentity(company.id, dto);
     const budgetSelection = await this.resolveBudgetSelection(company.id, dto);
     const debit = dto.lines.filter((line) => line.type === DebitCredit.DEBIT).reduce((sum, line) => sum + Number(line.amount), 0);
     const credit = dto.lines.filter((line) => line.type === DebitCredit.CREDIT).reduce((sum, line) => sum + Number(line.amount), 0);
@@ -327,7 +336,8 @@ export class AccountingService {
       throw new BadRequestException('One or more ledgers are invalid for this company');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const voucher = await this.prisma.$transaction(async (tx) => {
+      const voucherIdentity = await this.reserveVoucherIdentity(tx, company.id, dto);
       const voucher = await tx.voucher.create({
         data: {
           companyId: company.id,
@@ -355,16 +365,15 @@ export class AccountingService {
           lines: { include: { ledger: true } },
         },
       });
-
-      if (voucherIdentity.voucherTypeId && voucherIdentity.usedAutoNumber) {
-        await tx.voucherType.update({
-          where: { id: voucherIdentity.voucherTypeId },
-          data: { nextNumber: { increment: 1 } },
-        });
-      }
-
       return voucher;
     });
+
+    void this.tallySyncService.exportVoucherToTally(voucher.id, company.id).catch((error) => {
+      // Voucher creation must succeed even if Tally is offline; sync will retry on the next batch.
+      console.warn(`Unable to export voucher ${voucher.voucherNo} to Tally:`, error instanceof Error ? error.message : error);
+    });
+
+    return voucher;
   }
 
   async updateVoucherBudget(companyId: string | undefined, id: string, dto: UpdateVoucherBudgetDto) {
@@ -582,14 +591,35 @@ export class AccountingService {
       }, 0);
   }
 
-  private async resolveVoucherIdentity(companyId: string, dto: CreateVoucherDto) {
+  private async reserveVoucherIdentity(tx: Prisma.TransactionClient, companyId: string, dto: CreateVoucherDto) {
     if (dto.voucherTypeId) {
-      const voucherType = await this.prisma.voucherType.findFirst({ where: { id: dto.voucherTypeId, companyId, deletedAt: null, isActive: true } });
+      const [voucherType] = await tx.$queryRaw<Array<{
+        voucherTypeId: string;
+        voucherType: string;
+        prefix: string;
+        padding: number;
+        suffix: string | null;
+        reservedNumber: number;
+      }>>`
+        UPDATE voucher_types
+        SET next_number = next_number + 1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ${dto.voucherTypeId}
+          AND company_id = ${companyId}
+          AND deleted_at IS NULL
+          AND is_active = true
+        RETURNING id AS "voucherTypeId",
+                  code AS "voucherType",
+                  prefix,
+                  padding,
+                  suffix,
+                  next_number - 1 AS "reservedNumber"
+      `;
       if (!voucherType) throw new NotFoundException('Voucher type not found');
-      const autoNo = `${voucherType.prefix}${String(voucherType.nextNumber).padStart(voucherType.padding, '0')}${voucherType.suffix ?? ''}`;
+      const autoNo = `${voucherType.prefix}${String(voucherType.reservedNumber).padStart(voucherType.padding, '0')}${voucherType.suffix ?? ''}`;
       return {
-        voucherTypeId: voucherType.id,
-        voucherType: voucherType.code,
+        voucherTypeId: voucherType.voucherTypeId,
+        voucherType: voucherType.voucherType,
         voucherNo: dto.voucherNo || autoNo,
         usedAutoNumber: !dto.voucherNo,
       };
