@@ -3,11 +3,14 @@ import { useEffect, useMemo, useState } from 'react';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Divider from '@mui/material/Divider';
+import Drawer from '@mui/material/Drawer';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import Grid from '@mui/material/Grid';
+import IconButton from '@mui/material/IconButton';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
@@ -20,6 +23,7 @@ import Link from '@mui/material/Link';
 
 import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import ArrowRightOutlined from '@ant-design/icons/ArrowRightOutlined';
+import CloseOutlined from '@ant-design/icons/CloseOutlined';
 import ReloadOutlined from '@ant-design/icons/ReloadOutlined';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -456,7 +460,7 @@ export default function AccountingPage() {
     setSearchParams({ voucherType });
   }
 
-  function openVoucher(voucher) {
+  async function openVoucher(voucher) {
     setSelectedVoucher(voucher);
     const budget = voucher?.budgetGrant ? getBudgetByGrantId(voucher.budgetGrant.id) : getBudgetById(voucher?.budgetTypeId || '');
     const grant = voucher?.budgetGrant || budget?.grants?.find((item) => item.isDefault) || budget?.grants?.[0] || null;
@@ -465,6 +469,13 @@ export default function AccountingPage() {
       budgetGrantId: grant?.id || ''
     });
     setSearchParams({ voucher: voucher.id });
+
+    try {
+      const detail = await api(`/accounting/vouchers/${voucher.id}`);
+      setSelectedVoucher(detail);
+    } catch (detailError) {
+      setError(detailError.message);
+    }
   }
 
   function closeVoucher() {
@@ -907,7 +918,7 @@ export default function AccountingPage() {
             }}>
               <Stack spacing={1.5}>
                 {voucherTypeFilter && <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}><Chip color="primary" label={`${voucherTypes.find((type) => type.code === voucherTypeFilter)?.name || voucherTypeFilter} Register`} /><Button size="small" onClick={() => clearDrillDown(4)}>Show All Vouchers</Button></Stack>}
-                <VoucherGrid rows={filteredVoucherRows} columns={voucherColumns} voucherTypeOptions={voucherTypeOptions} budgetOptions={budgetOptions} grantOptions={grantOptions} fileName="vouchers" />
+                <VoucherGrid rows={filteredVoucherRows} columns={voucherColumns} voucherTypeOptions={voucherTypeOptions} budgetOptions={budgetOptions} grantOptions={grantOptions} fileName="vouchers" onRowClick={(params) => openVoucher(params.row)} />
               </Stack>
             </GridPanel>
           )}
@@ -927,7 +938,7 @@ export default function AccountingPage() {
 
           {tab === 6 && (
             <Box sx={{ p: 2.5 }}>
-              <VoucherGrid rows={voucherRows} columns={voucherColumns} voucherTypeOptions={voucherTypeOptions} budgetOptions={budgetOptions} grantOptions={grantOptions} fileName="day-book" />
+              <VoucherGrid rows={voucherRows} columns={voucherColumns} voucherTypeOptions={voucherTypeOptions} budgetOptions={budgetOptions} grantOptions={grantOptions} fileName="day-book" onRowClick={(params) => openVoucher(params.row)} />
             </Box>
           )}
 
@@ -1165,41 +1176,68 @@ export default function AccountingPage() {
         </Box>
       </Dialog>
 
-      <Dialog open={Boolean(selectedVoucher)} onClose={closeVoucher} fullWidth maxWidth="md">
-        <DialogTitle>{selectedVoucher?.voucherType.toUpperCase()} Voucher: {selectedVoucher?.voucherNo}</DialogTitle>
-        <DialogContent>
-          {selectedVoucher && <Stack spacing={2} sx={{ mt: 1 }}>
-            <Grid container spacing={2}>
-              <Grid size={4}><Typography color="text.secondary">Date</Typography><Typography>{formatDate(selectedVoucher.voucherDate)}</Typography></Grid>
-              <Grid size={4}><Typography color="text.secondary">Status</Typography><Chip size="small" color="success" label={selectedVoucher.status} /></Grid>
-              <Grid size={4}><Typography color="text.secondary">Branch</Typography><Typography>{selectedVoucher.branch?.name || '-'}</Typography></Grid>
-            </Grid>
-            <Grid container spacing={2}>
-              <Grid size={6}><Typography color="text.secondary">Budget</Typography><Typography>{selectedVoucher.budgetType?.name || 'Annual Budget'}</Typography></Grid>
-              <Grid size={6}><Typography color="text.secondary">Grant</Typography><Typography>{selectedVoucher.budgetGrant?.name || 'Nil'}</Typography></Grid>
-            </Grid>
-            <Grid container spacing={2}>
-              <Grid size={6}><Typography color="text.secondary">Cost Centre</Typography><Typography>{selectedVoucher.budgetType?.costCenter?.name || '-'}</Typography></Grid>
-            </Grid>
-            <Typography>{selectedVoucher.narration || 'No narration'}</Typography>
-            <CommonDataGrid
-              title={`${selectedVoucher.voucherNo} Lines`}
-              rows={selectedVoucherLineRows}
-              columns={selectedVoucherLineColumns}
-              fileName={`${selectedVoucher.voucherNo}-lines`}
-              searchPlaceholder="Search voucher lines"
-              height={320}
-              pageSize={25}
-              selectFilters={[{ field: 'type', label: 'Debit/Credit', options: dc.map((type) => ({ value: type, label: type })) }]}
-            />
-          </Stack>}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => { const type = selectedVoucher?.voucherType; closeVoucher(); if (type) openVoucherRegister(type); }}>Open {selectedVoucher?.voucherType} Register</Button>
-          {budgetVoucherEnabled && <Button onClick={() => openVoucherBudgetEditor(selectedVoucher)}>Edit Budget / Grant</Button>}
-          <Button variant="contained" onClick={closeVoucher}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <Drawer anchor="right" open={Boolean(selectedVoucher)} onClose={closeVoucher} ModalProps={{ keepMounted: true }}>
+        <Box sx={{ width: { xs: '100vw', sm: 560 }, height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <Stack direction="row" sx={{ alignItems: 'flex-start', justifyContent: 'space-between', px: 2.5, py: 2 }}>
+            <Box>
+              <Typography variant="overline" color="text.secondary">Voucher Detail</Typography>
+              <Typography variant="h5">{selectedVoucher?.voucherType?.toUpperCase()} {selectedVoucher?.voucherNo}</Typography>
+              <Typography variant="caption" color="text.secondary">Select any voucher row to open its detail here.</Typography>
+            </Box>
+            <IconButton onClick={closeVoucher} aria-label="Close voucher details">
+              <CloseOutlined />
+            </IconButton>
+          </Stack>
+          <Divider />
+          {selectedVoucher && (
+            <Box sx={{ flex: 1, overflow: 'auto', px: 2.5, py: 2 }}>
+              <Stack spacing={2}>
+                <Grid container spacing={2}>
+                  <Grid size={6}><Typography color="text.secondary" variant="caption">Date</Typography><Typography>{formatDate(selectedVoucher.voucherDate)}</Typography></Grid>
+                  <Grid size={6}><Typography color="text.secondary" variant="caption">Status</Typography><Chip size="small" color="success" label={selectedVoucher.status} sx={{ mt: 0.5 }} /></Grid>
+                  <Grid size={6}><Typography color="text.secondary" variant="caption">Branch</Typography><Typography>{selectedVoucher.branch?.name || '-'}</Typography></Grid>
+                  <Grid size={6}><Typography color="text.secondary" variant="caption">Voucher Type</Typography><Typography>{selectedVoucher.voucherType}</Typography></Grid>
+                </Grid>
+                <Grid container spacing={2}>
+                  <Grid size={6}><Typography color="text.secondary" variant="caption">Budget</Typography><Typography>{selectedVoucher.budgetType?.name || 'Annual Budget'}</Typography></Grid>
+                  <Grid size={6}><Typography color="text.secondary" variant="caption">Grant</Typography><Typography>{selectedVoucher.budgetGrant?.name || 'Nil'}</Typography></Grid>
+                  <Grid size={6}><Typography color="text.secondary" variant="caption">Cost Centre</Typography><Typography>{selectedVoucher.budgetType?.costCenter?.name || '-'}</Typography></Grid>
+                  <Grid size={6}><Typography color="text.secondary" variant="caption">Lines</Typography><Typography>{selectedVoucher.lines?.length || 0}</Typography></Grid>
+                </Grid>
+                <Box>
+                  <Typography color="text.secondary" variant="caption">Narration</Typography>
+                  <Typography sx={{ mt: 0.5 }}>{selectedVoucher.narration || 'No narration'}</Typography>
+                </Box>
+                <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: 'grey.50', border: 1, borderColor: 'divider' }}>
+                  <Stack direction="row" spacing={2} sx={{ justifyContent: 'space-between' }}>
+                    <Typography variant="body2">Debit: {Number(selectedVoucherLineRows.filter((line) => line.debitAmount !== null).reduce((sum, line) => sum + Number(line.debitAmount || 0), 0)).toFixed(2)}</Typography>
+                    <Typography variant="body2">Credit: {Number(selectedVoucherLineRows.filter((line) => line.creditAmount !== null).reduce((sum, line) => sum + Number(line.creditAmount || 0), 0)).toFixed(2)}</Typography>
+                  </Stack>
+                </Box>
+                <CommonDataGrid
+                  title={`${selectedVoucher.voucherNo} Lines`}
+                  rows={selectedVoucherLineRows}
+                  columns={selectedVoucherLineColumns}
+                  fileName={`${selectedVoucher.voucherNo}-lines`}
+                  searchPlaceholder="Search voucher lines"
+                  height={320}
+                  pageSize={25}
+                  selectFilters={[{ field: 'type', label: 'Debit/Credit', options: dc.map((type) => ({ value: type, label: type })) }]}
+                />
+                {!selectedVoucherLineRows.length && (
+                  <Alert severity="info">No voucher entries were stored for this voucher.</Alert>
+                )}
+              </Stack>
+            </Box>
+          )}
+          <Divider />
+          <Stack direction="row" spacing={1} sx={{ p: 2.5, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <Button onClick={() => { const type = selectedVoucher?.voucherType; closeVoucher(); if (type) openVoucherRegister(type); }}>Open {selectedVoucher?.voucherType} Register</Button>
+            {budgetVoucherEnabled && <Button onClick={() => openVoucherBudgetEditor(selectedVoucher)}>Edit Budget / Grant</Button>}
+            <Button variant="contained" onClick={closeVoucher}>Close</Button>
+          </Stack>
+        </Box>
+      </Drawer>
     </Grid>
   );
 }
@@ -1208,7 +1246,7 @@ function GridPanel({ label, onCreate, children }) {
   return <Stack spacing={2.5} sx={{ p: 2.5 }}><Stack direction="row" sx={{ justifyContent: 'flex-end' }}><Button variant="contained" startIcon={<PlusOutlined />} onClick={onCreate}>{label}</Button></Stack>{children}</Stack>;
 }
 
-function VoucherGrid({ rows, columns, voucherTypeOptions, budgetOptions, grantOptions, fileName }) {
+function VoucherGrid({ rows, columns, voucherTypeOptions, budgetOptions, grantOptions, fileName, onRowClick }) {
   return (
     <CommonDataGrid
       title="Vouchers"
@@ -1218,6 +1256,7 @@ function VoucherGrid({ rows, columns, voucherTypeOptions, budgetOptions, grantOp
       searchPlaceholder="Search vouchers"
       dateField="date"
       height={520}
+      onRowClick={onRowClick}
         selectFilters={[
           { field: 'type', label: 'Voucher Type', options: voucherTypeOptions },
         { field: 'budgetName', label: 'Budget', options: budgetOptions },

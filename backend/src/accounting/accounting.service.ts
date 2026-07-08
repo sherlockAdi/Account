@@ -292,6 +292,23 @@ export class AccountingService {
     });
   }
 
+  async getVoucher(id: string, companyId?: string) {
+    const company = await this.resolveCompany(companyId);
+    return this.prisma.voucher.findFirstOrThrow({
+      where: { id, companyId: company.id, deletedAt: null },
+      include: {
+        branch: true,
+        budgetType: {
+          include: {
+            costCenter: true,
+          },
+        },
+        budgetGrant: true,
+        lines: { include: { ledger: true } },
+      },
+    });
+  }
+
   async createVoucher(companyId: string | undefined, dto: CreateVoucherDto) {
     const company = await this.resolveCompany(companyId);
     const voucherIdentity = await this.resolveVoucherIdentity(company.id, dto);

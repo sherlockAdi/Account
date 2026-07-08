@@ -116,6 +116,12 @@ export class AccountingController {
     return this.accountingService.listVouchers(query);
   }
 
+  @Get('vouchers/:id')
+  @ApiOkResponse({ description: 'Get voucher detail.' })
+  getVoucher(@Param('id') id: string, @Query('companyId') companyId?: string) {
+    return this.accountingService.getVoucher(id, companyId);
+  }
+
   @Post('vouchers')
   @ApiCreatedResponse({ description: 'Create balanced voucher.' })
   createVoucher(@Query('companyId') companyId: string | undefined, @Body() dto: CreateVoucherDto) {

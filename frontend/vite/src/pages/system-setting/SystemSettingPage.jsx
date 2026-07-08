@@ -4,8 +4,11 @@ import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
+import Divider from '@mui/material/Divider';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import Grid from '@mui/material/Grid';
+import Switch from '@mui/material/Switch';
+import TextField from '@mui/material/TextField';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 
@@ -41,6 +44,19 @@ export default function SystemSettingPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [tallyStatus, setTallyStatus] = useState(null);
+  const [tallyForm, setTallyForm] = useState({
+    enabled: false,
+    host: '127.0.0.1',
+    port: 9000,
+    companyName: 'Default Company',
+    direction: 'BOTH',
+    autoSync: false,
+    syncIntervalSeconds: 300
+  });
+  const [tallyMessage, setTallyMessage] = useState('');
+  const [tallyError, setTallyError] = useState('');
+  const [tallyLoading, setTallyLoading] = useState(false);
 
   async function loadSettings() {
     try {
@@ -57,7 +73,29 @@ export default function SystemSettingPage() {
 
   useEffect(() => {
     loadSettings();
+    loadTallyStatus();
   }, []);
+
+  async function loadTallyStatus() {
+    try {
+      setTallyError('');
+      const response = await api('/tally-sync/status');
+      setTallyStatus(response);
+      if (response?.setting) {
+        setTallyForm({
+          enabled: Boolean(response.setting.enabled),
+          host: response.setting.host || '127.0.0.1',
+          port: response.setting.port || 9000,
+          companyName: response.setting.companyName || 'Default Company',
+          direction: response.setting.direction || 'BOTH',
+          autoSync: Boolean(response.setting.autoSync),
+          syncIntervalSeconds: response.setting.syncIntervalSeconds || 300
+        });
+      }
+    } catch (loadError) {
+      setTallyError(loadError.message);
+    }
+  }
 
   async function saveSettings() {
     try {
@@ -74,6 +112,56 @@ export default function SystemSettingPage() {
       setError(saveError.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function runTallyAction(path, successText) {
+    try {
+      setTallyLoading(true);
+      setTallyError('');
+      setTallyMessage('');
+      const response = await api(path, { method: 'POST' });
+      setTallyStatus((current) => (current ? { ...current, setting: response.setting || current.setting } : response));
+      setTallyMessage(successText);
+    } catch (actionError) {
+      setTallyError(actionError.message);
+    } finally {
+      setTallyLoading(false);
+    }
+  }
+
+  async function saveTallySettings() {
+    try {
+      setTallyLoading(true);
+      setTallyError('');
+      setTallyMessage('');
+      const response = await api('/tally-sync/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          enabled: tallyForm.enabled,
+          host: tallyForm.host,
+          port: Number(tallyForm.port),
+          companyName: tallyForm.companyName || null,
+          direction: tallyForm.direction,
+          autoSync: Boolean(tallyForm.autoSync),
+          syncIntervalSeconds: Number(tallyForm.syncIntervalSeconds)
+        })
+      });
+      setTallyStatus((current) => ({ ...(current || {}), setting: response }));
+      setTallyForm({
+        enabled: Boolean(response.enabled),
+        host: response.host || '127.0.0.1',
+        port: response.port || 9000,
+        companyName: response.companyName || 'Default Company',
+        direction: response.direction || 'BOTH',
+        autoSync: Boolean(response.autoSync),
+        syncIntervalSeconds: response.syncIntervalSeconds || 300
+      });
+      setTallyMessage('Tally sync setting saved');
+    } catch (saveError) {
+      setTallyError(saveError.message);
+    } finally {
+      setTallyLoading(false);
     }
   }
 
@@ -141,6 +229,157 @@ export default function SystemSettingPage() {
                 {loading ? 'Saving...' : 'Save Setting'}
               </Button>
             </Stack>
+          </Stack>
+        </MainCard>
+      </Grid>
+
+      <Grid size={12}>
+        <MainCard title="Tally Sync" contentSX={{ p: 2.5 }}>
+          <Stack spacing={2}>
+            {(tallyMessage || tallyError) && (
+              <Alert severity={tallyError ? 'error' : 'success'} onClose={() => (tallyError ? setTallyError('') : setTallyMessage(''))}>
+                {tallyError || tallyMessage}
+              </Alert>
+            )}
+
+            <Typography color="text.secondary">
+              Use these buttons to pull everything from Tally into ERP or push all ERP data back to Tally in one click.
+            </Typography>
+
+            <Divider />
+
+            <Grid container spacing={1.5}>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={Boolean(tallyForm.enabled)}
+                      onChange={(event) => setTallyForm({ ...tallyForm, enabled: event.target.checked })}
+                    />
+                  }
+                  label="Enable Tally Sync"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Host"
+                  value={tallyForm.host}
+                  onChange={(event) => setTallyForm({ ...tallyForm, host: event.target.value })}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 2 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="number"
+                  label="Port"
+                  value={tallyForm.port}
+                  onChange={(event) => setTallyForm({ ...tallyForm, port: event.target.value })}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Company Name"
+                  value={tallyForm.companyName}
+                  onChange={(event) => setTallyForm({ ...tallyForm, companyName: event.target.value })}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField
+                  select
+                  fullWidth
+                  size="small"
+                  label="Direction"
+                  value={tallyForm.direction}
+                  onChange={(event) => setTallyForm({ ...tallyForm, direction: event.target.value })}
+                  SelectProps={{ native: true }}
+                >
+                  <option value="BOTH">Both Ways</option>
+                  <option value="PULL">Import Only</option>
+                  <option value="PUSH">Export Only</option>
+                </TextField>
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={Boolean(tallyForm.autoSync)}
+                      onChange={(event) => setTallyForm({ ...tallyForm, autoSync: event.target.checked })}
+                    />
+                  }
+                  label="Auto Sync"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 3 }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="number"
+                  label="Interval Sec"
+                  value={tallyForm.syncIntervalSeconds}
+                  onChange={(event) => setTallyForm({ ...tallyForm, syncIntervalSeconds: event.target.value })}
+                />
+              </Grid>
+            </Grid>
+
+            <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
+              <Button variant="outlined" onClick={saveTallySettings} disabled={tallyLoading}>
+                {tallyLoading ? 'Saving...' : 'Save Tally Setting'}
+              </Button>
+            </Stack>
+
+            <Grid container spacing={1.5}>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Button fullWidth variant="outlined" onClick={() => runTallyAction('/tally-sync/test', 'Tally connection looks reachable')} disabled={tallyLoading}>
+                  Test Tally
+                </Button>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Button fullWidth variant="contained" onClick={() => runTallyAction('/tally-sync/import-all', 'Imported all available Tally data')} disabled={tallyLoading}>
+                  Import All
+                </Button>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Button fullWidth variant="contained" onClick={() => runTallyAction('/tally-sync/export-all', 'Exported all ERP data to Tally')} disabled={tallyLoading}>
+                  Export All
+                </Button>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Button fullWidth variant="outlined" onClick={() => runTallyAction('/tally-sync/sync', 'Two-way sync completed')} disabled={tallyLoading}>
+                  Sync Both Ways
+                </Button>
+              </Grid>
+            </Grid>
+
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: 'repeat(4, minmax(0, 1fr))' },
+                gap: 1.5,
+                mt: 1
+              }}
+            >
+              <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                <Typography variant="caption" color="text.secondary">Enabled</Typography>
+                <Typography variant="h6">{tallyStatus?.setting?.enabled ? 'Yes' : 'No'}</Typography>
+              </Box>
+              <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                <Typography variant="caption" color="text.secondary">Direction</Typography>
+                <Typography variant="h6">{tallyStatus?.setting?.direction || 'BOTH'}</Typography>
+              </Box>
+              <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                <Typography variant="caption" color="text.secondary">Host</Typography>
+                <Typography variant="h6">{tallyStatus?.setting?.host || '127.0.0.1'}</Typography>
+              </Box>
+              <Box sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                <Typography variant="caption" color="text.secondary">Mapping Count</Typography>
+                <Typography variant="h6">{tallyStatus?.mappingCount ?? 0}</Typography>
+              </Box>
+            </Box>
           </Stack>
         </MainCard>
       </Grid>

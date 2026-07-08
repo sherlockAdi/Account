@@ -23,6 +23,7 @@ import { ApprovalsModule } from './approvals/approvals.module';
 import { BudgetModule } from './budget/budget.module';
 import { CostCenterModule } from './cost-center/cost-center.module';
 import { SystemSettingModule } from './system-setting/system-setting.module';
+import { TallySyncModule } from './tally-sync/tally-sync.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { SystemSettingModule } from './system-setting/system-setting.module';
     BudgetModule,
     CostCenterModule,
     SystemSettingModule,
+    TallySyncModule,
     ModulesModule,
   ],
   controllers: [AppController],
